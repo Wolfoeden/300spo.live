@@ -1,0 +1,88 @@
+name: Static site checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      integrate_hotwallet:
+        description: Build and integrate the public hotwallet preview artifact
+        required: true
+        default: false
+        type: boolean
+      hotwallet_ref:
+        description: Branch, tag or commit from Wolfderoeden/hotwallet
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  website:
+    name: Validate static package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out website
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run package checks
+        run: node scripts/check.js
+
+  wallet-preview:
+    name: Build wallet preview artifact
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.integrate_hotwallet }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out website
+        uses: actions/checkout@v4
+        with:
+          path: site
+
+      - name: Check out hotwallet
+        uses: actions/checkout@v4
+        with:
+          repository: Wolfderoeden/hotwallet
+          ref: ${{ inputs.hotwallet_ref }}
+          path: hotwallet
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install hotwallet dependencies
+        working-directory: hotwallet
+        run: pnpm install --frozen-lockfile
+
+      - name: Export hotwallet for /wallet-app
+        working-directory: hotwallet
+        env:
+          EXPO_PUBLIC_WEB_BASE_PATH: /wallet-app
+        run: pnpm export:web
+
+      - name: Integrate and validate export
+        working-directory: site
+        run: |
+          node scripts/integrate-wallet-web.mjs ../hotwallet/dist
+          node scripts/check.js
+
+      - name: Upload checked Netlify publish directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: 300spo-public-with-wallet
+          path: site/public
+          if-no-files-found: error
+          retention-days: 7

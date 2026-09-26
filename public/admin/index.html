@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>300 SPO Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="/" class="brand">300</a><span>Site administration</span>
+      </header>
+      <section id="login-panel" class="card" hidden>
+        <p class="eyebrow">SECURE ACCESS</p>
+        <h1>Welcome back.</h1>
+        <p>Enter the 300 SPO administrator password.</p>
+        <form id="login-form">
+          <label
+            >Password<input
+              id="password"
+              type="password"
+              autocomplete="current-password"
+              required /></label
+          ><button type="submit">Sign in</button>
+        </form>
+      </section>
+      <section id="editor-panel" class="card" hidden>
+        <div class="editor-head">
+          <div>
+            <p class="eyebrow">HOMEPAGE</p>
+            <h1>Partner content</h1>
+          </div>
+          <button id="logout" class="secondary" type="button">Sign out</button>
+        </div>
+        <form id="content-form">
+          <label
+            >Hero announcement<input
+              id="heroAnnouncement"
+              maxlength="160"
+              required
+          /></label>
+          <label
+            >Section label<input id="partnerKicker" maxlength="60" required
+          /></label>
+          <label
+            >Partner heading<input id="partnerHeading" maxlength="160" required
+          /></label>
+          <label
+            >Partner description<textarea
+              id="partnerBody"
+              rows="4"
+              maxlength="400"
+              required
+            ></textarea>
+          </label>
+          <fieldset class="image-editor">
+            <legend>Action card images</legend>
+            <label class="image-field"
+              ><img id="buyImagePreview" alt="Buy ADA preview" /><span
+                >Buy ADA image</span
+              ><input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                data-image-slot="buy"
+                data-image-field="buyImage" /><input
+                id="buyImage"
+                type="hidden"
+            /></label>
+            <label class="image-field"
+              ><img id="spoImagePreview" alt="SPO preview" /><span
+                >SPO image</span
+              ><input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                data-image-slot="spo"
+                data-image-field="spoImage" /><input
+                id="spoImage"
+                type="hidden"
+            /></label>
+            <label class="image-field"
+              ><img id="drepImagePreview" alt="DRep preview" /><span
+                >DRep image</span
+              ><input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                data-image-slot="drep"
+                data-image-field="drepImage" /><input
+                id="drepImage"
+                type="hidden"
+            /></label>
+          </fieldset>
+          <div class="actions">
+            <button type="submit">Save changes</button
+            ><a href="/" target="_blank">View live site ↗</a>
+          </div>
+        </form>
+      </section>
+      <p id="message" role="status"></p>
+    </main>
+    <script src="/admin/admin.js"></script>
+  </body>
+</html>

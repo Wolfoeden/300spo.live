@@ -1,0 +1,208 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+
+:root {
+  --ink: #0b0f0b;
+  --ink-soft: #3f4940;
+  --paper: #f5f6f0;
+  --paper-bright: #fcfcf8;
+  --surface: #ffffff;
+  --gold: #d5a92f;
+  --gold-light: #efd47a;
+  --green: #2c8650;
+  --line: rgba(13, 24, 15, 0.12);
+  --dark: #080a08;
+  --max: 1180px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: "DM Sans", Arial, sans-serif; }
+a { color: inherit; }
+button, input { font: inherit; }
+.wallet-layout { width: min(var(--max), calc(100% - 48px)); margin-inline: auto; }
+
+.wallet-topbar {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  width: min(1220px, calc(100% - 32px));
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 10px 11px;
+  border: 1px solid rgba(239, 212, 122, 0.24);
+  border-radius: 15px;
+  background: rgba(8, 10, 8, 0.86);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+}
+.wallet-brand { display: flex; align-items: center; gap: 11px; color: #f8f3e7; text-decoration: none; }
+.wallet-brand img { width: 46px; height: 46px; border: 1px solid rgba(239, 212, 122, 0.4); border-radius: 50%; object-fit: cover; }
+.wallet-brand span { display: grid; gap: 4px; }
+.wallet-brand strong { font: 800 18px/1 "Manrope", sans-serif; letter-spacing: -0.02em; }
+.wallet-brand small { color: #aaa99f; font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase; }
+.back-link { display: inline-flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 15px; border: 1px solid rgba(239, 212, 122, 0.25); border-radius: 10px; color: #efd47a; font-size: 13px; font-weight: 700; text-decoration: none; }
+
+.wallet-hero { position: relative; min-height: 810px; overflow: hidden; padding: 142px 0 88px; background: radial-gradient(circle at 77% 34%, rgba(213, 169, 47, 0.18), transparent 24rem), linear-gradient(135deg, #060806 0%, #111711 54%, #080a08 100%); color: #f8f3e7; }
+.wallet-hero:after { position: absolute; right: 0; bottom: 0; left: 0; height: 180px; background: linear-gradient(0deg, rgba(245, 246, 240, 0.1), transparent); content: ""; pointer-events: none; }
+.hero-orb { position: absolute; border-radius: 50%; filter: blur(2px); pointer-events: none; }
+.hero-orb-one { top: 11%; right: -140px; width: 430px; height: 430px; border: 1px solid rgba(239, 212, 122, 0.12); }
+.hero-orb-two { bottom: -260px; left: -200px; width: 600px; height: 600px; border: 1px solid rgba(110, 213, 142, 0.1); }
+.hero-layout { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(390px, 0.8fr); align-items: center; gap: 80px; }
+.hero-copy { max-width: 690px; }
+.preview-chip { display: inline-flex; align-items: center; gap: 9px; color: var(--gold-light); font-size: 11px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
+.preview-chip i { width: 7px; height: 7px; border-radius: 50%; background: #6ed58e; box-shadow: 0 0 12px rgba(110, 213, 142, 0.72); }
+.hero-copy h1 { margin: 24px 0 22px; font: 700 clamp(48px, 5.8vw, 78px) / 0.99 "Manrope", sans-serif; letter-spacing: -0.06em; }
+.hero-copy > p { max-width: 650px; margin: 0; color: #c9cdc5; font-size: 18px; line-height: 1.68; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 30px; }
+.wallet-button { display: inline-flex; min-height: 50px; align-items: center; justify-content: center; padding: 0 19px; border: 1px solid transparent; border-radius: 10px; font-size: 14px; font-weight: 800; text-decoration: none; transition: transform 0.2s, border-color 0.2s, background 0.2s; }
+.wallet-button:hover { transform: translateY(-2px); }
+.wallet-button-primary { border-color: var(--gold-light); background: linear-gradient(135deg, var(--gold-light), #ba861a); color: #0a0b08; box-shadow: 0 12px 35px rgba(213, 169, 47, 0.17); }
+.wallet-button-primary span { margin-left: 18px; }
+.wallet-button-secondary { border-color: rgba(248, 243, 231, 0.22); background: rgba(248, 243, 231, 0.07); color: #f8f3e7; }
+.wallet-button-text { color: #d7d8d1; }
+.hero-facts { display: flex; flex-wrap: wrap; gap: 18px 24px; margin-top: 34px; color: #aeb3aa; font-size: 12px; }
+.hero-facts span { display: inline-flex; align-items: center; gap: 8px; }
+.hero-facts i { display: grid; width: 21px; height: 21px; place-items: center; border: 1px solid rgba(239, 212, 122, 0.3); border-radius: 50%; color: var(--gold-light); font-size: 9px; font-style: normal; font-weight: 800; }
+
+.phone-stage { position: relative; display: grid; min-height: 580px; place-items: center; }
+.phone-shadow { position: absolute; width: 330px; height: 85px; border-radius: 50%; background: rgba(0, 0, 0, 0.54); filter: blur(28px); transform: translateY(285px); }
+.phone-frame { position: relative; z-index: 2; width: 324px; min-height: 610px; overflow: hidden; padding: 13px 16px 17px; border: 8px solid #1d211d; border-radius: 42px; background: #f6f7f3; color: #131813; box-shadow: 0 42px 100px rgba(0, 0, 0, 0.54), inset 0 0 0 1px rgba(255, 255, 255, 0.55); transform: rotate(2deg); }
+.phone-status { display: flex; height: 30px; align-items: center; justify-content: space-between; padding: 0 7px; font-size: 9px; font-weight: 800; }
+.phone-camera { width: 78px; height: 20px; border-radius: 999px; background: #101310; }
+.phone-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 2px 16px; }
+.phone-header > div:first-child { display: grid; gap: 3px; }
+.phone-header small { color: #7b837b; font-size: 9px; }
+.phone-header strong { font: 800 17px/1 "Manrope", sans-serif; }
+.phone-icons { display: flex; gap: 7px; }
+.phone-icons span { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #e2e4de; border-radius: 50%; background: white; font-size: 11px; }
+.balance-card { display: grid; gap: 5px; padding: 20px; border-radius: 18px; background: linear-gradient(135deg, #101710, #263c28); color: white; box-shadow: 0 14px 28px rgba(18, 50, 25, 0.16); }
+.balance-card small { color: #a9b5a9; font-size: 9px; }
+.balance-card strong { margin-top: 3px; font: 700 31px/1 "Manrope", sans-serif; }
+.balance-card strong b { color: #d7b94f; font-size: 13px; }
+.balance-card span { color: #c5ccc5; font-size: 10px; }
+.quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 18px 34px; }
+.quick-actions div { display: grid; justify-items: center; gap: 7px; color: #4b554c; font-size: 9px; font-weight: 700; }
+.quick-actions i { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid #e0e3dc; border-radius: 14px; background: white; color: #1e632f; font-size: 17px; font-style: normal; box-shadow: 0 8px 18px rgba(27, 48, 30, 0.06); }
+.asset-tabs { display: flex; gap: 20px; border-bottom: 1px solid #dedfd9; color: #899089; font-size: 10px; }
+.asset-tabs strong { padding: 10px 2px; border-bottom: 2px solid #2c8650; color: #172017; }
+.asset-tabs span { padding: 10px 2px; }
+.asset-row { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 11px; padding: 17px 2px; }
+.asset-row > div:not(.ada-mark) { display: grid; gap: 4px; }
+.asset-row > div:last-child { justify-items: end; }
+.asset-row strong { font-size: 11px; }
+.asset-row small { color: #858b84; font-size: 8px; }
+.ada-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #17366f; color: white; font-size: 21px; }
+.phone-nav { position: absolute; right: 16px; bottom: 12px; left: 16px; display: grid; grid-template-columns: 1fr 1fr; padding-top: 11px; border-top: 1px solid #dedfd9; color: #8b918a; font-size: 8px; text-align: center; }
+.phone-nav strong, .phone-nav span { display: grid; justify-items: center; gap: 4px; }
+.phone-nav strong { color: #256e3b; }
+.phone-nav i { font-size: 15px; font-style: normal; }
+.floating-note { position: absolute; z-index: 3; display: grid; gap: 3px; padding: 12px 14px; border: 1px solid rgba(239, 212, 122, 0.27); border-radius: 11px; background: rgba(9, 12, 9, 0.89); color: #9fa59e; font-size: 9px; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3); backdrop-filter: blur(12px); }
+.floating-note b { color: #f0d884; font-size: 11px; }
+.note-one { top: 90px; right: -13px; }
+.note-two { bottom: 112px; left: -36px; }
+
+.wallet-preview-section, .device-section, .product-principles { padding: 105px 0; }
+.section-heading { display: flex; align-items: flex-start; gap: 20px; }
+.section-number { display: grid; width: 38px; height: 38px; place-items: center; margin-top: 2px; border: 1px solid rgba(44, 134, 80, 0.22); border-radius: 50%; color: var(--green); font-size: 10px; font-weight: 800; }
+.section-heading p { margin: 0 0 7px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
+.section-heading h2 { margin: 0; font: 700 clamp(36px, 4.5vw, 58px) / 1 "Manrope", sans-serif; letter-spacing: -0.05em; }
+.section-intro { max-width: 720px; margin: 24px 0 38px 58px; color: var(--ink-soft); font-size: 16px; line-height: 1.7; }
+.section-intro code { padding: 3px 6px; border-radius: 5px; background: #e6e9e1; color: #24442b; font-size: 0.9em; }
+.preview-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: white; box-shadow: 0 26px 75px rgba(37, 49, 38, 0.1); }
+.preview-toolbar { display: grid; grid-template-columns: 90px 1fr auto; min-height: 54px; align-items: center; padding: 0 18px; border-bottom: 1px solid var(--line); background: #eceee8; color: #677067; font-size: 11px; }
+.preview-toolbar > span { justify-self: center; padding: 6px 16px; border: 1px solid rgba(13, 24, 15, 0.08); border-radius: 7px; background: rgba(255, 255, 255, 0.66); }
+.preview-toolbar a { color: #24663a; font-weight: 700; text-decoration: none; }
+.browser-dots { display: flex; gap: 6px; }
+.browser-dots i { width: 9px; height: 9px; border-radius: 50%; background: #d9a9a3; }
+.browser-dots i:nth-child(2) { background: #dbc276; }
+.browser-dots i:nth-child(3) { background: #8fc59d; }
+.preview-state { display: grid; min-height: 560px; place-items: center; align-content: center; padding: 40px; text-align: center; }
+.preview-state img { width: 72px; height: 72px; margin-bottom: 20px; border-radius: 50%; object-fit: cover; box-shadow: 0 14px 34px rgba(37, 49, 38, 0.15); }
+.preview-state strong { font: 700 24px/1.2 "Manrope", sans-serif; }
+.preview-state p { max-width: 470px; margin: 12px 0 0; color: #687168; line-height: 1.6; }
+.preview-shell iframe { display: block; width: 100%; min-height: 760px; border: 0; background: #f6f7f4; }
+.preview-shell iframe[hidden], [hidden] { display: none !important; }
+
+.device-section { border-block: 1px solid var(--line); background: var(--paper-bright); }
+.device-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 44px; }
+.device-card { scroll-margin-top: 24px; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 12px 34px rgba(37, 49, 38, 0.04); }
+.device-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 15px; background: #e2efe5; color: #245f35; font: 800 18px/1 "Manrope", sans-serif; }
+.device-icon-apple { background: #e9e9e4; color: #161916; font-size: 12px; }
+.device-icon-web { background: #f5e9bd; color: #785311; font-size: 22px; }
+.device-label { margin: 26px 0 8px !important; color: var(--green) !important; font-size: 10px !important; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.device-card h3 { margin: 0 0 14px; font: 700 24px/1.2 "Manrope", sans-serif; letter-spacing: -0.03em; }
+.device-card p, .device-card li { color: #626b62; font-size: 14px; line-height: 1.65; }
+.device-card ol { margin: 0; padding-left: 20px; }
+.device-cta { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 13px; margin-top: 20px; padding: 0 14px; border: 1px solid #286f3d; border-radius: 9px; background: #286f3d; color: white; font-size: 12px; font-weight: 800; text-decoration: none; }
+.device-cta:hover { background: #205d32; }
+.device-status { display: inline-flex; min-height: 34px; align-items: center; margin-top: 22px; padding: 0 11px; border: 1px solid rgba(44, 134, 80, 0.16); border-radius: 999px; background: #eef5ef; color: #2b6b3e; font-size: 10px; font-weight: 800; }
+
+.product-principles { background: #090c09; color: #f8f3e7; }
+.principles-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; align-items: start; gap: 90px; }
+.product-principles h2 { max-width: 530px; margin: 22px 0 0; font: 700 clamp(38px, 4.7vw, 61px) / 1.03 "Manrope", sans-serif; letter-spacing: -0.05em; }
+.principle-list { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.principle-list p { display: grid; grid-template-columns: 190px 1fr; gap: 26px; margin: 0; padding: 23px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+.principle-list strong { color: var(--gold-light); font-size: 14px; }
+.principle-list span { color: #aeb3aa; font-size: 14px; line-height: 1.65; }
+
+.wallet-footer { padding: 32px 0; background: #050705; color: white; }
+.wallet-footer .wallet-layout { display: flex; align-items: center; justify-content: space-between; gap: 30px; }
+.wallet-footer p { color: #82877f; font-size: 11px; }
+.wallet-footer .wallet-brand img { width: 42px; height: 42px; }
+
+a:focus-visible { outline: 3px solid #78b98b; outline-offset: 4px; }
+
+@media (max-width: 930px) {
+  .wallet-hero { min-height: auto; }
+  .hero-layout { grid-template-columns: 1fr; gap: 65px; }
+  .hero-copy { max-width: 780px; }
+  .phone-stage { min-height: 650px; }
+  .device-grid { grid-template-columns: 1fr; }
+  .device-card { display: grid; grid-template-columns: 56px 1fr; column-gap: 20px; }
+  .device-card .device-label, .device-card h3, .device-card p, .device-card ol, .device-card .device-cta, .device-card .device-status { grid-column: 2; }
+  .device-card .device-label { margin-top: 0 !important; }
+  .device-card .device-icon { grid-row: 1 / span 5; }
+  .device-card .device-status { justify-self: start; }
+  .device-card .device-cta { justify-self: start; }
+  .principles-grid { grid-template-columns: 1fr; gap: 50px; }
+}
+
+@media (max-width: 620px) {
+  .wallet-layout { width: min(var(--max), calc(100% - 28px)); }
+  .wallet-topbar { top: 8px; min-height: 60px; }
+  .wallet-brand img { width: 40px; height: 40px; }
+  .wallet-brand small { display: none; }
+  .back-link { padding: 0 11px; font-size: 11px; }
+  .wallet-hero { padding: 112px 0 64px; }
+  .hero-copy h1 { font-size: 46px; }
+  .hero-copy > p { font-size: 16px; }
+  .hero-actions { display: grid; }
+  .wallet-button { width: 100%; }
+  .hero-facts { display: grid; }
+  .phone-stage { min-height: 580px; transform: scale(0.9); transform-origin: top center; }
+  .note-one { right: -4px; }
+  .note-two { left: -3px; }
+  .wallet-preview-section, .device-section, .product-principles { padding: 72px 0; }
+  .section-heading { gap: 12px; }
+  .section-heading h2 { font-size: 37px; }
+  .section-intro { margin-left: 0; }
+  .preview-toolbar { grid-template-columns: 54px 1fr; padding: 0 10px; }
+  .preview-toolbar > span { overflow: hidden; max-width: 180px; justify-self: end; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-toolbar a { grid-column: 1 / -1; min-height: 40px; align-content: center; border-top: 1px solid var(--line); text-align: center; }
+  .preview-state { min-height: 430px; padding: 30px 22px; }
+  .preview-shell iframe { min-height: 690px; }
+  .device-card { display: block; padding: 24px; }
+  .device-card .device-label { margin-top: 24px !important; }
+  .principle-list p { grid-template-columns: 1fr; gap: 8px; }
+  .wallet-footer .wallet-layout { align-items: flex-start; flex-direction: column; }
+  .wallet-footer p { margin: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .wallet-button { transition: none; }
+}

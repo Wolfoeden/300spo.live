@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080a08" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="300 Wallet" />
+    <title>300 Wallet | Cardano einfach nutzen</title>
+    <meta name="description" content="Die öffentliche Vorschau der 300 Wallet: ein klarer Einstieg in Cardano für Browser, Android und iPhone." />
+    <meta property="og:title" content="300 Wallet" />
+    <meta property="og:description" content="Cardano einfach nutzen: Wallet, Staking und Governance in einer verständlichen Oberfläche." />
+    <meta property="og:url" content="https://300spo.live/wallet/" />
+    <meta property="og:image" content="https://300spo.live/300-hero.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://300spo.live/wallet/" />
+    <link rel="icon" href="/300-logo.jpg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/wallet/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/wallet/manifest.webmanifest" />
+    <link rel="stylesheet" href="/wallet/wallet.css" />
+  </head>
+  <body>
+    <header class="wallet-topbar">
+      <a class="wallet-brand" href="/" aria-label="Zurück zu 300 SPO und DRep">
+        <img src="/300-logo.jpg" alt="" />
+        <span><strong>300 Wallet</strong><small>Cardano, klar gemacht</small></span>
+      </a>
+      <a class="back-link" href="/">300 SPO &amp; DRep <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="wallet-hero" aria-labelledby="wallet-title">
+        <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
+        <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
+        <div class="wallet-layout hero-layout">
+          <div class="hero-copy">
+            <span class="preview-chip"><i></i> Preprod-Vorschau</span>
+            <h1 id="wallet-title">Eine Cardano Wallet, die sich sofort vertraut anfühlt.</h1>
+            <p>Guthaben sehen, ADA senden und empfangen, Staking verfolgen und bei Cardano mitbestimmen – in einer Oberfläche, die ohne Vorwissen funktioniert.</p>
+            <div class="hero-actions" aria-label="Wallet ausprobieren">
+              <a class="wallet-button wallet-button-primary" href="#wallet-preview">Wallet im Browser öffnen <span aria-hidden="true">→</span></a>
+              <a class="wallet-button wallet-button-secondary" href="#android-test">Auf Android testen</a>
+              <a class="wallet-button wallet-button-text" href="#iphone-start">Zum iPhone-Startbildschirm</a>
+            </div>
+            <div class="hero-facts" aria-label="Produktmerkmale">
+              <span><i aria-hidden="true">1</i> Einfache Bedienung</span>
+              <span><i aria-hidden="true">2</i> Mobile zuerst</span>
+              <span><i aria-hidden="true">3</i> Preprod-Testzugang</span>
+            </div>
+          </div>
+
+          <div class="phone-stage" aria-label="Vorschau der 300 Wallet Oberfläche">
+            <div class="phone-shadow" aria-hidden="true"></div>
+            <div class="phone-frame">
+              <div class="phone-status"><span>9:41</span><span class="phone-camera"></span><span>5G&nbsp; ▰</span></div>
+              <div class="phone-header">
+                <div><small>Meine Wallet</small><strong>300 Wallet</strong></div>
+                <div class="phone-icons" aria-hidden="true"><span>↻</span><span>⚙</span></div>
+              </div>
+              <div class="balance-card">
+                <small>Gesamtguthaben</small>
+                <strong>0,00 <b>ADA</b></strong>
+                <span>0,00 €</span>
+              </div>
+              <div class="quick-actions" aria-hidden="true">
+                <div><i>↑</i><span>Senden</span></div>
+                <div><i>↓</i><span>Empfangen</span></div>
+              </div>
+              <div class="asset-tabs"><strong>Token</strong><span>Sammlerstücke</span></div>
+              <div class="asset-row">
+                <div class="ada-mark">₳</div>
+                <div><strong>Cardano</strong><small>ADA</small></div>
+                <div><strong>0,00 ADA</strong><small>0,00 €</small></div>
+              </div>
+              <div class="phone-nav" aria-hidden="true"><strong><i>◇</i>Wallet</strong><span><i>✦</i>Belohnungen</span></div>
+            </div>
+            <span class="floating-note note-one">Nächste Epoche <b>in 3 Tagen</b></span>
+            <span class="floating-note note-two">Staking <b>übersichtlich erklärt</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="wallet-preview-section" id="wallet-preview" aria-labelledby="preview-title">
+        <div class="wallet-layout">
+          <div class="section-heading">
+            <span class="section-number">01</span>
+            <div><p>Browser-Vorschau</p><h2 id="preview-title">Wallet direkt ansehen</h2></div>
+          </div>
+          <p class="section-intro">Der geprüfte Web-Build wird an dieser Stelle eingebunden. Die Vorschau bleibt technisch vom restlichen Auftritt getrennt und läuft unter <code>/wallet-app</code>.</p>
+
+          <div class="preview-shell">
+            <div class="preview-toolbar">
+              <div class="browser-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+              <span>300spo.live/wallet-app</span>
+              <a data-wallet-open hidden href='/wallet-app/' rel='noreferrer' target='_blank'>In neuem Tab öffnen ↗</a>
+            </div>
+            <div class="preview-state" data-wallet-preview-status role="status" aria-live="polite">
+              <img src="/300-logo.jpg" alt="" />
+              <strong>Web-Build noch nicht eingebunden</strong>
+              <p>Sobald der geprüfte Export vorliegt, erscheint die Wallet automatisch in diesem Bereich.</p>
+            </div>
+            <iframe data-wallet-frame hidden title="Interaktive Vorschau der 300 Wallet" loading="lazy" referrerpolicy="same-origin" allow="clipboard-read; clipboard-write"></iframe>
+          </div>
+        </div>
+      </section>
+
+      <section class="device-section" aria-labelledby="device-title">
+        <div class="wallet-layout">
+          <div class="section-heading">
+            <span class="section-number">02</span>
+            <div><p>Auf deinem Gerät</p><h2 id="device-title">Der passende Einstieg</h2></div>
+          </div>
+          <div class="device-grid">
+            <article class="device-card" id="android-test">
+              <span class="device-icon" aria-hidden="true">A</span>
+              <p class="device-label">Android</p>
+              <h3>APK kostenlos testen</h3>
+              <p>Die Android-Testversion verbindet sich mit Cardano Preprod. Mainnet-Signierung ist in diesem Build deaktiviert.</p>
+              <a class="device-cta" data-apk-download hidden href="/downloads/300-wallet-android-preprod.apk" download>APK kostenlos herunterladen <span aria-hidden="true">↓</span></a>
+              <span class="device-status" data-apk-status>Preprod-Testversion · APK wird bereitgestellt</span>
+            </article>
+            <article class="device-card" id="iphone-start">
+              <span class="device-icon device-icon-apple" aria-hidden="true">●</span>
+              <p class="device-label">iPhone</p>
+              <h3>Als Web-App starten</h3>
+              <ol>
+                <li>Diese Seite in Safari öffnen</li>
+                <li>Auf „Teilen“ tippen</li>
+                <li>„Zum Home-Bildschirm“ wählen</li>
+              </ol>
+              <a class='device-cta' data-wallet-open hidden href='/wallet-app/'>Web-App öffnen <span aria-hidden="true">→</span></a>
+              <span class="device-status">Preprod-Web-App</span>
+            </article>
+            <article class="device-card" id="chrome-test">
+              <span class="device-icon device-icon-web" aria-hidden="true">◎</span>
+              <p class="device-label">Chrome</p>
+              <h3>Erweiterung kostenlos testen</h3>
+              <ol>
+                <li>ZIP herunterladen und entpacken</li>
+                <li><code>chrome://extensions</code> öffnen</li>
+                <li>Entwicklermodus aktivieren und den entpackten Ordner laden</li>
+              </ol>
+              <a class="device-cta" href="/downloads/300-wallet-chrome-preprod-preview.zip" download>Chrome-Testbuild herunterladen <span aria-hidden="true">↓</span></a>
+              <span class="device-status">Preprod-Oberflächenvorschau</span>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="product-principles" aria-labelledby="principles-title">
+        <div class="wallet-layout principles-grid">
+          <div>
+            <span class="preview-chip"><i></i> Produktprinzip</span>
+            <h2 id="principles-title">Einfach an der Oberfläche. Sorgfältig im Hintergrund.</h2>
+          </div>
+          <div class="principle-list">
+            <p><strong>Ein klarer Start</strong><span>Wallet erstellen und direkt die wichtigsten Funktionen sehen.</span></p>
+            <p><strong>Verständliche Sprache</strong><span>Staking und Governance werden dort erklärt, wo die Information gebraucht wird.</span></p>
+            <p><strong>Keine Renditeversprechen</strong><span>Staking-Erträge richten sich nach Protokoll und Poolleistung; Höhe und Zeitpunkt sind nicht garantiert.</span></p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="wallet-footer">
+      <div class="wallet-layout">
+        <a class="wallet-brand" href="/"><img src="/300-logo.jpg" alt="" /><span><strong>300 Wallet</strong><small>von 300 SPO &amp; DRep</small></span></a>
+        <p>Preprod-Produktvorschau · © 2026 300</p>
+      </div>
+    </footer>
+
+    <script defer src="/wallet/wallet.js"></script>
+  </body>
+</html>

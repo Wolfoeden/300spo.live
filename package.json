@@ -1,0 +1,12 @@
+{
+  "name": "300spo-live-public",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/check.js",
+    "wallet:web:integrate": "node scripts/integrate-wallet-web.mjs"
+  },
+  "devDependencies": {
+    "@netlify/functions": "latest"
+  }
+}

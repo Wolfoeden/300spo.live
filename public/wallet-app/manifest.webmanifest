@@ -1,0 +1,19 @@
+{
+  "name": "300 Wallet",
+  "short_name": "300 Wallet",
+  "description": "Die einfache Cardano Wallet von 300.",
+  "lang": "de-DE",
+  "start_url": "/wallet-app/",
+  "scope": "/wallet-app/",
+  "display": "standalone",
+  "background_color": "#071426",
+  "theme_color": "#071426",
+  "icons": [
+    {
+      "src": "/wallet-app/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

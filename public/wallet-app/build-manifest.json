@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "name": "300 Wallet Web",
+  "basePath": "/wallet-app",
+  "source": "hotwallet-web-export"
+}
