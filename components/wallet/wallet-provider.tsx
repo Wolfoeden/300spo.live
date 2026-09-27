@@ -43,13 +43,16 @@ type WalletContextValue = {
   error: string | null;
   auth: { status: AuthStatus; identity: string | null; error: string | null };
   dialogOpen: boolean;
-  openDialog(): void;
+  /** `afterConnect` runs once a wallet connects from this dialog (the dialog then closes). */
+  openDialog(afterConnect?: () => void): void;
   closeDialog(): void;
   connect(key: string): Promise<void>;
   disconnect(): void;
   refreshBalance(): Promise<void>;
   signIn(): Promise<void>;
   signOut(): Promise<void>;
+  /** The live CIP-30 API of the connected wallet, for building transactions. */
+  getApi(): Cip30Api | null;
 };
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -132,6 +135,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<WalletContextValue["auth"]>({ status: "signed-out", identity: null, error: null });
   const [dialogOpen, setDialogOpen] = useState(false);
   const apiRef = useRef<Cip30Api | null>(null);
+  const afterConnectRef = useRef<(() => void) | null>(null);
 
   const loadBalance = useCallback(async (api: Cip30Api) => {
     try {
@@ -191,6 +195,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setWallet(connected);
         setStatus("connected");
         storage.set(key);
+        const afterConnect = afterConnectRef.current;
+        if (afterConnect) {
+          afterConnectRef.current = null;
+          setDialogOpen(false);
+          afterConnect();
+        }
         await Promise.all([loadBalance(api), loadSession(connected)]);
       } catch (cause) {
         apiRef.current = null;
@@ -278,12 +288,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, [status, refreshBalance]);
 
-  const openDialog = useCallback(() => {
+  const openDialog = useCallback((afterConnect?: () => void) => {
+    afterConnectRef.current = afterConnect ?? null;
     setInstalled(listInstalledWallets());
     setError(null);
     setDialogOpen(true);
   }, []);
-  const closeDialog = useCallback(() => setDialogOpen(false), []);
+  const closeDialog = useCallback(() => {
+    afterConnectRef.current = null;
+    setDialogOpen(false);
+  }, []);
+  const getApi = useCallback(() => apiRef.current, []);
 
   const value = useMemo<WalletContextValue>(
     () => ({
@@ -303,8 +318,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       refreshBalance,
       signIn,
       signOut,
+      getApi,
     }),
-    [status, installed, connectingKey, wallet, balance, balanceError, error, auth, dialogOpen, openDialog, closeDialog, connect, disconnect, refreshBalance, signIn, signOut],
+    [status, installed, connectingKey, wallet, balance, balanceError, error, auth, dialogOpen, openDialog, closeDialog, connect, disconnect, refreshBalance, signIn, signOut, getApi],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

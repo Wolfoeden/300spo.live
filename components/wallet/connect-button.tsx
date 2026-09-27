@@ -10,7 +10,7 @@ export function ConnectButton({ className = "" }: { className?: string }) {
   if (status === "connected" && wallet) {
     return (
       <button
-        onClick={openDialog}
+        onClick={() => openDialog()}
         className={`group inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/[0.07] py-1.5 pl-1.5 pr-3.5 text-sm transition hover:border-gold/60 ${className}`}
         aria-label={`${wallet.name} connected. Open wallet details`}
       >
@@ -31,7 +31,7 @@ export function ConnectButton({ className = "" }: { className?: string }) {
 
   const busy = status === "connecting";
   return (
-    <button onClick={openDialog} className={`btn btn-gold !px-4 !py-2.5 sm:!px-5 ${className}`} disabled={busy}>
+    <button onClick={() => openDialog()} className={`btn btn-gold !px-4 !py-2.5 sm:!px-5 ${className}`} disabled={busy}>
       {busy ? <Spinner size={16} /> : <WalletIcon size={16} />}
       {busy ? (
         <span>Connecting…</span>

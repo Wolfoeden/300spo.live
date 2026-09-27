@@ -11,8 +11,6 @@ export const TOKEN_300 = {
 } as const;
 
 export const LINKS = {
-  delegateSpo: `web+cardano://stake?${POOL_ID_HEX}`,
-  delegateDrep: `web+cardano://drep/${DREP_ID}`,
   poolPm: `https://pool.pm/${POOL_ID_HEX}`,
   cardanoOrg: "https://cardano.org/",
   buyAda: "https://cardanomix.com",
