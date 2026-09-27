@@ -107,16 +107,19 @@ function CoinStage({ status, stake, delegators }: { status?: string | null; stak
   const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [10, -10]), { stiffness: 150, damping: 18 });
   const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-12, 12]), { stiffness: 150, damping: 18 });
 
-  const onMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const onMove = (event: React.PointerEvent<HTMLElement>) => {
     if (reduce || event.pointerType !== "mouse") return;
     const rect = event.currentTarget.getBoundingClientRect();
     x.set((event.clientX - rect.left) / rect.width - 0.5);
     y.set((event.clientY - rect.top) / rect.height - 0.5);
   };
 
+  // The coin is the way into the games; on phones it leads the hero.
   return (
-    <motion.div
-      className="relative mx-auto aspect-square w-full max-w-[26rem] [perspective:1000px] lg:max-w-[30rem]"
+    <motion.a
+      href={LINKS.play}
+      aria-label="Play 300 games"
+      className="group relative order-first mx-auto block aspect-square w-full max-w-[22rem] [perspective:1000px] sm:max-w-[26rem] lg:order-none lg:max-w-[30rem]"
       onPointerMove={onMove}
       onPointerLeave={() => {
         x.set(0);
@@ -128,19 +131,22 @@ function CoinStage({ status, stake, delegators }: { status?: string | null; stak
     >
       <OrbitRings />
       <motion.div className="absolute inset-[18%] animate-float" style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}>
-        <div className="absolute inset-[-12%] rounded-full bg-gold/30 blur-3xl" />
+        <div className="absolute inset-[-12%] rounded-full bg-gold/30 blur-3xl transition group-hover:bg-gold/45" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/300-logo.jpg"
           alt="300 Cardano coin"
-          className="relative size-full rounded-full shadow-[0_30px_80px_-20px_rgba(233,180,76,0.55)] ring-1 ring-gold-bright/40"
+          className="relative size-full rounded-full shadow-[0_30px_80px_-20px_rgba(233,180,76,0.55)] ring-1 ring-gold-bright/40 transition duration-300 group-hover:scale-[1.03] group-active:scale-95"
         />
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.28),transparent_45%)]" />
       </motion.div>
+      <span className="btn btn-gold absolute bottom-[9%] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap !px-4 !py-2 text-sm shadow-xl shadow-black/40">
+        Play 300 games <ArrowRight size={14} />
+      </span>
       <FloatingChip className="left-0 top-[14%]" delay={0.5} label="Pool status" value={capitalize(status)} positive />
       <FloatingChip className="right-0 top-[58%]" delay={0.65} label="Live stake" value={formatAdaCompact(stake)} />
-      <FloatingChip className="bottom-[4%] left-[8%]" delay={0.8} label="Delegators" value={formatInteger(delegators)} />
-    </motion.div>
+      <FloatingChip className="bottom-[4%] left-0 hidden sm:block" delay={0.8} label="Delegators" value={formatInteger(delegators)} />
+    </motion.a>
   );
 }
 
