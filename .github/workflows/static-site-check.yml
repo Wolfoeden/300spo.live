@@ -27,13 +27,26 @@ jobs:
       - name: Check out website
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
-      - name: Run package checks
-        run: node scripts/check.js
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck and test
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Build and run package checks
+        run: pnpm build
 
   wallet-preview:
     name: Build wallet preview artifact
@@ -73,16 +86,17 @@ jobs:
           EXPO_PUBLIC_WEB_BASE_PATH: /wallet-app
         run: pnpm export:web
 
-      - name: Integrate and validate export
+      - name: Integrate export and build site
         working-directory: site
         run: |
           node scripts/integrate-wallet-web.mjs ../hotwallet/dist
-          node scripts/check.js
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Upload checked Netlify publish directory
         uses: actions/upload-artifact@v4
         with:
           name: 300spo-public-with-wallet
-          path: site/public
+          path: site/out
           if-no-files-found: error
           retention-days: 7
