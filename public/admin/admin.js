@@ -34,6 +34,15 @@ const element = (tag, props = {}, children = []) => {
 const txLink = (hash) =>
   element("a", { href: `https://cardanoscan.io/transaction/${hash}`, target: "_blank", rel: "noreferrer", textContent: `${hash.slice(0, 10)}… ↗` });
 
+const describeScan = (at, result) => {
+  if (!at) return "never";
+  const minutes = Math.round((Date.now() - new Date(at).getTime()) / 60000);
+  const when = minutes < 1 ? "just now" : `${minutes} min ago`;
+  if (result?.error) return `${when} · failed: ${result.error}`;
+  if (result?.skipped === "no_treasury") return `${when} · no treasury set`;
+  return `${when} · ${result?.credited ?? 0} credited`;
+};
+
 const gameRequest = (body) =>
   request("/api/admin/game", body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
 
@@ -52,6 +61,7 @@ const renderGame = (data) => {
       ["Spent in rounds", `${formatAmount(totals.spent)} 300`],
       ["Open balances", `${formatAmount(totals.balances)} 300`],
       ["Rounds", formatAmount(totals.rounds)],
+      ["Last scan", describeScan(settings.lastScanAt, settings.lastScanResult)],
     ].map(([label, value]) => element("div", {}, [element("dt", { textContent: label }), element("dd", { textContent: value })])),
   );
 
