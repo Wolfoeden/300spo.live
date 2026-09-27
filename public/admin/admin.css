@@ -132,6 +132,19 @@ button {
 .image-field img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #111; }
 .image-field span, .image-field input[type="file"] { padding: 0 10px; }
 .image-field input[type="file"] { padding-bottom: 12px; color: #aaa; font-size: 12px; }
+.button-link {
+  display: inline-block;
+  margin-top: 12px;
+  border: 1px solid #f4d675;
+  border-radius: 9px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #f4d675, #9b6710);
+  color: #050505;
+  font-weight: 850;
+  text-decoration: none;
+}
+.signed-in-as { margin-left: auto; color: #8f8b82; font-size: 12px; overflow-wrap: anywhere; }
+#login-form .hint { margin: 0; color: #8f8b82; font-size: 13px; }
 .game-card { margin-top: 24px; }
 .game-card h2 { margin: 36px 0 8px; font-size: 18px; }
 .game-card .hint { margin: 0 0 12px; color: #8f8b82; font-size: 13px; }
