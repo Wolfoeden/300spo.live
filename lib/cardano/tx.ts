@@ -1,4 +1,5 @@
 import { decode, encode } from "cborg";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { addressType, bytesToHex, hexToBytes, type DrepCredential } from "./address";
 
 /**
@@ -25,6 +26,8 @@ export class InsufficientFundsError extends Error {}
 // Mainnet slots are one second long; slot 0 of this schedule is Unix time 1591566291.
 const MAINNET_SLOT_ZERO_UNIX = 1591566291;
 export const mainnetSlotAt = (unixMs: number) => Math.floor(unixMs / 1000) - MAINNET_SLOT_ZERO_UNIX;
+/** Time-to-live for a transaction built now: valid for `seconds` from the current slot. */
+export const ttlFromNow = (seconds = 3600) => mainnetSlotAt(Date.now()) + seconds;
 
 const tags: ((inner: unknown) => unknown)[] = [];
 tags[258] = (inner) => inner; // sets may arrive tagged
@@ -130,10 +133,10 @@ const VKEY_WITNESS_SIZE = 101;
 // for encoding differences between wallets (costs < 0.001 ADA).
 const WITNESS_SET_OVERHEAD = 3 + 12;
 
-const txSize = (body: Uint8Array, witnesses: number) => {
+const txSize = (body: Uint8Array, witnesses: number, auxiliaryData: Uint8Array | null) => {
   const witnessArrayHeader = witnesses < 24 ? 1 : 2;
   const witnessSet = 2 + WITNESS_SET_OVERHEAD + witnessArrayHeader + witnesses * VKEY_WITNESS_SIZE;
-  return 1 + body.length + witnessSet + 2;
+  return 1 + body.length + witnessSet + 1 + (auxiliaryData?.length ?? 1);
 };
 
 export type BuildRequest = {
@@ -145,19 +148,29 @@ export type BuildRequest = {
   deposit?: bigint;
   /** Extra signatures beyond the payment keys of the inputs (e.g. the stake key). */
   extraSigners?: number;
+  /** Transaction metadata, e.g. from cip20Message(). */
+  metadata?: Map<number, unknown>;
   params: ProtocolParams;
   ttl: number;
 };
 
 export type BuiltTransaction = {
   body: Uint8Array;
+  auxiliaryData: Uint8Array | null;
   unsignedTx: Uint8Array;
   fee: bigint;
   inputs: Utxo[];
   change: TxOutput | null;
 };
 
-const encodeBody = (inputs: Utxo[], outputs: TxOutput[], fee: bigint, ttl: number, certificates: Certificate[]) => {
+const encodeBody = (
+  inputs: Utxo[],
+  outputs: TxOutput[],
+  fee: bigint,
+  ttl: number,
+  certificates: Certificate[],
+  auxiliaryDataHash: Uint8Array | null,
+) => {
   const body = new Map<number, unknown>([
     [0, [...inputs].sort((a, b) => compareBytes(a.txHash, b.txHash) || a.index - b.index).map((utxo) => [utxo.txHash, utxo.index])],
     [1, outputs.map(encodeOutput)],
@@ -165,6 +178,7 @@ const encodeBody = (inputs: Utxo[], outputs: TxOutput[], fee: bigint, ttl: numbe
     [3, ttl],
   ]);
   if (certificates.length) body.set(4, certificates);
+  if (auxiliaryDataHash) body.set(7, auxiliaryDataHash);
   return encode(body);
 };
 
@@ -179,6 +193,8 @@ export const buildTransaction = (request: BuildRequest): BuiltTransaction => {
   const certificates = request.certificates ?? [];
   const deposit = request.deposit ?? 0n;
   const required = sumValues(outputs.map((output) => output.value));
+  const auxiliaryData = request.metadata ? encode(request.metadata) : null;
+  const auxiliaryDataHash = auxiliaryData ? blake2b(auxiliaryData, { dkLen: 32 }) : null;
 
   for (const output of outputs) {
     if (output.value.lovelace < minAdaForOutput(output, params)) throw new Error("An output is below the minimum ADA value");
@@ -218,7 +234,7 @@ export const buildTransaction = (request: BuildRequest): BuiltTransaction => {
     const attempt = (fee: bigint, withChange: boolean) => {
       const changeLovelace = input.lovelace - required.lovelace - deposit - fee;
       const change: TxOutput | null = withChange ? { address: changeAddress, value: { lovelace: changeLovelace, assets: changeAssets } } : null;
-      const body = encodeBody(selected, change ? [...outputs, change] : outputs, fee, ttl, certificates);
+      const body = encodeBody(selected, change ? [...outputs, change] : outputs, fee, ttl, certificates, auxiliaryDataHash);
       return { body, change, changeLovelace };
     };
 
@@ -227,7 +243,7 @@ export const buildTransaction = (request: BuildRequest): BuiltTransaction => {
       let fee = 0n;
       let result = attempt(fee, true);
       for (let pass = 0; pass < 4; pass += 1) {
-        const next = params.minFeeA * BigInt(txSize(result.body, signers())) + params.minFeeB;
+        const next = params.minFeeA * BigInt(txSize(result.body, signers(), auxiliaryData)) + params.minFeeB;
         if (next === fee) break;
         fee = next;
         result = attempt(fee, true);
@@ -240,7 +256,7 @@ export const buildTransaction = (request: BuildRequest): BuiltTransaction => {
       const leftover = input.lovelace - required.lovelace - deposit;
       if (changeAssets.size === 0 && leftover >= fee && leftover - fee < 1_000_000n) {
         const noChange = attempt(leftover, false);
-        const minimum = params.minFeeA * BigInt(txSize(noChange.body, signers())) + params.minFeeB;
+        const minimum = params.minFeeA * BigInt(txSize(noChange.body, signers(), auxiliaryData)) + params.minFeeB;
         if (leftover >= minimum) return finish(noChange.body, leftover, selected, null);
       }
     }
@@ -251,9 +267,9 @@ export const buildTransaction = (request: BuildRequest): BuiltTransaction => {
   }
 
   function finish(body: Uint8Array, fee: bigint, inputs: Utxo[], change: TxOutput | null): BuiltTransaction {
-    if (txSize(body, signers()) > params.maxTxSize) throw new Error("Transaction too large; consolidate the wallet's UTxOs first.");
-    const unsignedTx = concat([new Uint8Array([0x84]), body, new Uint8Array([0xa0, 0xf5, 0xf6])]);
-    return { body, unsignedTx, fee, inputs: [...inputs], change };
+    if (txSize(body, signers(), auxiliaryData) > params.maxTxSize) throw new Error("Transaction too large; consolidate the wallet's UTxOs first.");
+    const unsignedTx = concat([new Uint8Array([0x84]), body, new Uint8Array([0xa0, 0xf5]), auxiliaryData ?? new Uint8Array([0xf6])]);
+    return { body, auxiliaryData, unsignedTx, fee, inputs: [...inputs], change };
   }
 };
 
@@ -271,8 +287,16 @@ const concat = (parts: Uint8Array[]) => {
  * Combines the body we built with the witness set returned by CIP-30
  * `signTx(tx, partialSign)`, keeping the signed body bytes untouched.
  */
-export const assembleSignedTx = (body: Uint8Array, witnessSetHex: string) =>
-  concat([new Uint8Array([0x84]), body, hexToBytes(witnessSetHex), new Uint8Array([0xf5, 0xf6])]);
+export const assembleSignedTx = (body: Uint8Array, witnessSetHex: string, auxiliaryData: Uint8Array | null = null) =>
+  concat([new Uint8Array([0x84]), body, hexToBytes(witnessSetHex), new Uint8Array([0xf5]), auxiliaryData ?? new Uint8Array([0xf6])]);
+
+/** CIP-20 transaction message (metadata label 674); wallets and explorers display it. */
+export const cip20Message = (lines: string[]) => {
+  for (const line of lines) {
+    if (new TextEncoder().encode(line).length > 64) throw new Error(`Metadata line longer than 64 bytes: ${line}`);
+  }
+  return new Map<number, unknown>([[674, new Map([["msg", lines]])]]);
+};
 
 const encodeDrep = (drep: DrepCredential) => [drep.kind === "key" ? 0 : 1, drep.hash];
 

@@ -2,8 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { addressBytesFromWallet, bytesToHex, drepCredential, poolKeyHash, stakeKeyHash } from "@/lib/cardano/address";
-import { walletErrorCode, walletErrorMessage } from "@/lib/cardano/cip30";
-import { InsufficientFundsError, assembleSignedTx, buildTransaction, delegationCertificates, mainnetSlotAt, parseUtxo, type Utxo } from "@/lib/cardano/tx";
+import { assembleSignedTx, buildTransaction, delegationCertificates, ttlFromNow, parseUtxo, type ProtocolParams, type Utxo } from "@/lib/cardano/tx";
+import { fetchChain, loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
 import { formatAdaExact } from "@/lib/format";
 import { DREP_ID, POOL_ID } from "@/lib/site";
 import { ArrowUpRight, Check, Spinner } from "../icons";
@@ -13,20 +13,6 @@ import { useWallet } from "./wallet-provider";
 export type DelegationTarget = "pool" | "drep";
 
 type AccountState = { registered: boolean; delegatedTo300: { pool: boolean; drep: boolean } };
-type ChainParams = { minFeeA: string; minFeeB: string; keyDeposit: string; coinsPerUtxoByte: string; maxTxSize: number };
-
-/** The chain proxy depends on a slow public API; one retry absorbs most hiccups. */
-const fetchChain = async <T,>(path: string, attempts = 2): Promise<T> => {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      const response = await fetch(path, { cache: "no-store" });
-      if (response.ok) return (await response.json()) as T;
-      if (response.status < 500 || attempt >= attempts) throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      if (attempt >= attempts) throw error;
-    }
-  }
-};
 
 type Phase =
   | { name: "loading" }
@@ -43,16 +29,6 @@ export const useDelegation = () => {
   return context;
 };
 
-const TTL_SLOTS = 3600;
-
-/** CIP-30 codes differ per call: signTx 2 = user declined, submitTx 2 = rejected by the network. */
-const transactionErrorMessage = (error: unknown, stage: "build" | "sign" | "submit") => {
-  if (error instanceof InsufficientFundsError || error instanceof Error) return error.message;
-  const code = walletErrorCode(error);
-  if (code === -3 || (stage === "sign" && code === 2)) return "The transaction was declined in your wallet.";
-  if (stage === "submit") return `The network rejected the transaction: ${walletErrorMessage(error)}`;
-  return walletErrorMessage(error);
-};
 
 export function DelegationProvider({ children }: { children: React.ReactNode }) {
   const { status, openDialog } = useWallet();
@@ -89,7 +65,7 @@ function DelegationBody({
 }) {
   const { wallet, getApi, refreshBalance } = useWallet();
   const [account, setAccount] = useState<AccountState | null>(null);
-  const [chainParams, setChainParams] = useState<ChainParams | null>(null);
+  const [chainParams, setChainParams] = useState<ProtocolParams | null>(null);
   const [phase, setPhase] = useState<Phase>({ name: "loading" });
   const mainnet = wallet?.networkId === 1;
   const stakeAddress = wallet?.stakeAddress ?? null;
@@ -99,7 +75,7 @@ function DelegationBody({
     let active = true;
     Promise.all([
       fetchChain<AccountState>(`/api/chain/account?stake=${encodeURIComponent(stakeAddress)}`),
-      fetchChain<ChainParams>("/api/chain/params"),
+      loadProtocolParams(),
     ])
       .then(([data, params]) => {
         if (!active) return;
@@ -125,17 +101,11 @@ function DelegationBody({
     const api = getApi();
     if (!api || !account || !chainParams || !wallet.stakeAddressHex) return;
     setPhase({ name: "signing" });
-    let stage: "build" | "sign" | "submit" = "build";
+    let stage: TxStage = "build";
     try {
       const keyHash = stakeKeyHash(addressBytesFromWallet(wallet.stakeAddressHex));
       if (!keyHash) throw new Error("This wallet uses a script stake key, which this page cannot delegate.");
-      const params = {
-        minFeeA: BigInt(chainParams.minFeeA),
-        minFeeB: BigInt(chainParams.minFeeB),
-        keyDeposit: BigInt(chainParams.keyDeposit),
-        coinsPerUtxoByte: BigInt(chainParams.coinsPerUtxoByte),
-        maxTxSize: chainParams.maxTxSize,
-      };
+      const params = chainParams;
       const { certificates, deposit } = delegationCertificates({
         stakeKeyHash: keyHash,
         registered: account.registered,
@@ -151,7 +121,7 @@ function DelegationBody({
         deposit,
         extraSigners: 1,
         params,
-        ttl: mainnetSlotAt(Date.now()) + TTL_SLOTS,
+        ttl: ttlFromNow(),
       });
       stage = "sign";
       const witnesses = await api.signTx(bytesToHex(built.unsignedTx), true);
@@ -213,7 +183,7 @@ function DelegationBody({
       </div>
       {account && chainParams && !account.registered && (
         <p className="rounded-xl border border-line bg-white/[0.02] p-3 text-xs text-muted">
-          First delegation from this wallet: Cardano takes a {formatAdaExact(BigInt(chainParams.keyDeposit))} ADA deposit to register your
+          First delegation from this wallet: Cardano takes a {formatAdaExact(chainParams.keyDeposit)} ADA deposit to register your
           stake key. You get it back if you ever deregister.
         </p>
       )}

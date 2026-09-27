@@ -38,12 +38,37 @@ features such as token-based games.
 On phones without wallet extensions the dialog explains how to open the site
 in a wallet app's built-in browser.
 
+## Game balance (`/play`)
+
+Players deposit 300 tokens and spend them on rounds. **There are no winnings
+and no withdrawals**; deposits are game credit only.
+
+1. `/play` (not linked from the landing page, `noindex`) requires the wallet
+   sign-in. The session's stake address is the account.
+2. A deposit asks `/api/game/deposit` for a reference, then the wallet signs a
+   transfer of the tokens to the treasury address with a CIP-20 message
+   (`300spo.live game deposit`, reference).
+3. `game-watcher` (scheduled, every 2 minutes, production only) scans the
+   treasury via Koios and credits transfers that are 5 blocks deep. The
+   reference in the metadata decides the account; transfers without one are
+   listed in `/admin/` for manual assignment. While a player waits,
+   `/api/game/deposit-check` settles their transaction directly.
+4. A round (`/api/game/round`) deducts the configured cost in one database
+   transaction; the balance can never go negative.
+
+Data lives in the Supabase project `300` (schema `game`, see
+`supabase/migrations`). The tables are only reachable through `SECURITY
+DEFINER` functions; Netlify connects as the role `game_api`, which may execute
+those functions and nothing else. Treasury address, round cost, minimum
+deposit and the on/off switch are set in `/admin/`.
+
 ## Environment variables (Netlify)
 
 | Name | Used by |
 | --- | --- |
 | `ADMIN_PASSWORD` | Admin CMS login |
 | `WALLET_SESSION_SECRET` | Signs wallet sign-in challenges and sessions; at least 32 random characters. Without it `/api/wallet-auth/*` answers `503 not_configured`. |
+| `GAME_DATABASE_URL` | Pooler connection string for the `game_api` role (`aws-1-eu-west-1.pooler.supabase.com:6543`). Locally in `.env.local`, which `pnpm preview` reads. |
 
 ## Development
 

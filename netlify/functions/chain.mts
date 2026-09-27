@@ -1,22 +1,9 @@
 import type { Config, Context } from "@netlify/functions";
 import { addressBytesFromWallet, addressToBech32, drepCredential, isRewardAddress, sameBytes } from "../../lib/cardano/address";
+import { koios } from "../../lib/server/koios";
 import { DREP_ID, POOL_ID } from "../../lib/site";
 
-// The public Koios tier answers in 1–8 s, so each request makes exactly one
-// upstream call and stays inside Netlify's 10 s function limit.
-const KOIOS = "https://api.koios.rest/api/v1";
-const UPSTREAM_TIMEOUT_MS = 8500;
-
-const koios = async (path: string, body?: unknown) => {
-  const response = await fetch(`${KOIOS}/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`Koios ${path} returned ${response.status}`);
-  return response.json();
-};
+// Each request makes exactly one Koios call to stay inside Netlify's 10 s limit.
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -46,16 +33,17 @@ const account = async (request: Request) => {
   }
   if (!stakeAddress.startsWith("stake1")) return json({ error: "mainnet_only" }, 400);
 
-  const accounts = await koios("account_info", { _stake_addresses: [stakeAddress] });
+  type AccountInfo = { status?: string; delegated_pool?: string | null; delegated_drep?: string | null };
+  const accounts = await koios<AccountInfo[]>("account_info", { _stake_addresses: [stakeAddress] });
   const info = Array.isArray(accounts) ? accounts[0] : undefined;
   const registered = info?.status === "registered";
   return json(
     {
       stakeAddress,
       registered,
-      delegatedPool: registered ? (info.delegated_pool ?? null) : null,
-      delegatedDrep: registered ? (info.delegated_drep ?? null) : null,
-      delegatedTo300: { pool: registered && info.delegated_pool === POOL_ID, drep: registered && isOurDrep(info.delegated_drep) },
+      delegatedPool: registered ? (info?.delegated_pool ?? null) : null,
+      delegatedDrep: registered ? (info?.delegated_drep ?? null) : null,
+      delegatedTo300: { pool: registered && info?.delegated_pool === POOL_ID, drep: registered && isOurDrep(info?.delegated_drep) },
     },
     200,
     { "netlify-cdn-cache-control": "public, durable, max-age=20", "netlify-vary": "query=stake" },
@@ -64,7 +52,8 @@ const account = async (request: Request) => {
 
 /** GET /api/chain/params — protocol parameters; they only change at epoch boundaries. */
 const params = async () => {
-  const cli = await koios("cli_protocol_params");
+  type CliParams = { txFeePerByte: number; txFeeFixed: number; stakeAddressDeposit: number; utxoCostPerByte: number; maxTxSize: number };
+  const cli = await koios<CliParams>("cli_protocol_params");
   return json(
     {
       minFeeA: String(cli.txFeePerByte),

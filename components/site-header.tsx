@@ -1,29 +1,30 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LINKS } from "@/lib/site";
 import { Close, Menu } from "./icons";
 import { ConnectButton } from "./wallet/connect-button";
 
 const NAV = [
-  { href: "#guide", label: "Cardano guide" },
-  { href: "#pool", label: "Live pool" },
-  { href: "#governance", label: "Governance" },
-  { href: "#partners", label: "Partners" },
+  { href: "/#guide", label: "Cardano guide" },
+  { href: "/#pool", label: "Live pool" },
+  { href: "/#governance", label: "Governance" },
+  { href: "/#partners", label: "Partners" },
   { href: LINKS.wallet, label: "300 Wallet" },
 ];
 
 export function Brand() {
   return (
-    <a href="#top" className="flex items-center gap-2.5" aria-label="300 home">
+    <Link href="/#top" className="flex items-center gap-2.5" aria-label="300 home">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/300-logo.jpg" alt="" className="size-9 rounded-full ring-1 ring-gold/40" />
       <span className="leading-none">
         <strong className="block text-base font-bold tracking-tight">300</strong>
         <small className="hidden whitespace-nowrap font-mono text-[0.62rem] uppercase tracking-[0.16em] text-muted min-[400px]:block">SPO &amp; DRep</small>
       </span>
-    </a>
+    </Link>
   );
 }
 
