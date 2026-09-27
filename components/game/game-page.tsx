@@ -1,40 +1,49 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addressBytesFromWallet, bytesToHex } from "@/lib/cardano/address";
 import { assembleSignedTx, buildTransaction, ttlFromNow, minAdaForOutput, parseUtxo, type ProtocolParams, type TxOutput, type Utxo } from "@/lib/cardano/tx";
 import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
+import { GAME_COPY, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
 import { useWallet } from "../wallet/wallet-provider";
+import { Arena, type ArenaGame, type PlayResult } from "./arena";
+import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
-const GAME_ID = "placeholder";
 const POLL_MS = 20_000;
 
 type GameState = {
   wallet: string;
   enabled: boolean;
-  roundCost: number;
   minDeposit: number;
   treasuryAddress: string | null;
+  bets: { min: number; max: number; step: number };
+  games: ArenaGame[];
   balance: number;
   deposits: { reference: string; requested: number; received: number | null; status: "open" | "submitted" | "confirmed"; txHash: string | null; createdAt: string }[];
-  rounds: { id: number; game: string; cost: number; createdAt: string }[];
+  rounds: { id: number; game: string; bet: number; choice: number; outcome: number; payout: number; nonce: number; serverSeedHash: string; clientSeed: string; createdAt: string }[];
 };
 
 const API_ERRORS: Record<string, string> = {
-  game_disabled: "Deposits and rounds are paused right now.",
+  game_disabled: "This game is paused right now.",
   amount_too_small: "That amount is below the minimum deposit.",
-  insufficient_balance: "Not enough game balance for a round. Deposit more 300 first.",
+  insufficient_balance: "Not enough game balance for this bet. Deposit more 300 first.",
+  invalid_bet: "That bet is not allowed. Choose one of the listed amounts.",
+  invalid_choice: "Pick one of the listed options.",
+  invalid_client_seed: "Client seed: 1–64 letters, digits, - or _.",
   too_many_open_deposits: "Too many unfinished deposits. Let the pending ones confirm first.",
   not_configured: "The game is not configured yet.",
   not_signed_in: "Your wallet session expired. Verify your wallet again.",
 };
+
+const loadFairness = () => api<Fairness>("/api/game/fairness");
+const rotateSeed = (clientSeed: string | null) => api<Fairness>("/api/game/seed", clientSeed ? { clientSeed } : {});
+const placeBet = (game: string, bet: number, choice: number) => api<PlayResult>("/api/game/play", { game, bet: String(bet), choice });
 
 class ApiError extends Error {}
 
@@ -93,8 +102,9 @@ export function GamePage() {
           Play with <span className="text-gold-gradient">300.</span>
         </h1>
         <p className="mt-5 text-lg text-muted">
-          Deposit 300 tokens as game credit and spend them on rounds. There are no winnings and no withdrawals — the tokens are simply used up
-          by playing.
+          Coin flip, horse race, Xerxes against the machine. Pick the winner and bet{" "}
+          {state ? `${formatTokenAmount(BigInt(state.bets.min))} to ${formatTokenAmount(BigInt(state.bets.max))}` : "300 to 3,000"} from your
+          game credit — a correct pick pays out in game credit. Game credit cannot be withdrawn.
         </p>
       </div>
 
@@ -129,10 +139,11 @@ export function GamePage() {
           <Gate icon={<Spinner className="text-gold" />} title="Loading your game balance…" text={loadError ?? ""} />
         ) : (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
+            <Arena games={state.games} bets={state.bets} balance={state.balance} enabled={state.enabled} play={placeBet} onSettled={() => void refresh()} />
             <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
             <DepositCard state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />
-            <RoundCard state={state} onPlayed={refresh} />
             <History state={state} />
+            <FairnessSection state={state} />
           </div>
         )}
       </div>
@@ -166,13 +177,14 @@ function BalanceCard({ state, walletTokens }: { state: GameState; walletTokens: 
         {formatTokenAmount(BigInt(state.balance))} <span className="text-gold-gradient">300</span>
       </p>
       <p className="mt-2 text-sm text-muted">
-        One round costs {formatTokenAmount(BigInt(state.roundCost))} tokens · {Math.floor(state.balance / state.roundCost)} rounds left
+        Bets from {formatTokenAmount(BigInt(state.bets.min))} to {formatTokenAmount(BigInt(state.bets.max))} tokens in steps of{" "}
+        {formatTokenAmount(BigInt(state.bets.step))}
       </p>
       <div className="mt-6 border-t border-line pt-4 text-sm text-muted">
         In your wallet: {walletTokens === null ? "–" : `${formatTokenAmount(walletTokens)} tokens`}
       </div>
       {!state.enabled && (
-        <p className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">Deposits and rounds are paused right now.</p>
+        <p className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">Deposits and games are paused right now.</p>
       )}
     </section>
   );
@@ -294,7 +306,7 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
 
       <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-line p-3 text-sm">
         <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-gold)]" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-        <span className="text-muted">I understand that game credit can only be spent on rounds here. It cannot be withdrawn or refunded.</span>
+        <span className="text-muted">I understand that game credit, including winnings, can only be used for bets here. It cannot be withdrawn or refunded.</span>
       </label>
 
       <button className="btn btn-gold mt-4 w-full" onClick={deposit} disabled={!canDeposit}>
@@ -312,66 +324,6 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
           </a>
         </p>
       )}
-    </section>
-  );
-}
-
-function RoundCard({ state, onPlayed }: { state: GameState; onPlayed(): Promise<void> }) {
-  const [phase, setPhase] = useState<{ name: "idle" } | { name: "playing" } | { name: "played"; roundId: number } | { name: "error"; message: string }>({
-    name: "idle",
-  });
-  const canPlay = state.enabled && state.balance >= state.roundCost && phase.name !== "playing";
-
-  const play = async () => {
-    setPhase({ name: "playing" });
-    try {
-      const result = await api<{ roundId: number }>("/api/game/round", { game: GAME_ID });
-      setPhase({ name: "played", roundId: result.roundId });
-      await onPlayed();
-    } catch (error) {
-      setPhase({ name: "error", message: error instanceof Error ? error.message : "The round could not start." });
-    }
-  };
-
-  return (
-    <section className="relative overflow-hidden rounded-3xl border border-line bg-night p-6 sm:p-8 lg:col-span-2">
-      <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-60" />
-      <div className="relative grid grid-cols-1 items-center gap-8 md:grid-cols-[auto_1fr]">
-        <div className="mx-auto size-40 [perspective:800px]">
-          <motion.div
-            key={phase.name === "played" ? phase.roundId : "idle"}
-            initial={phase.name === "played" ? { rotateY: 0 } : false}
-            animate={phase.name === "played" ? { rotateY: 720 } : { rotateY: 0 }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="size-full"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/300-logo.jpg" alt="" className="size-full rounded-full shadow-[0_20px_60px_-15px_rgba(233,180,76,0.7)] ring-1 ring-gold/40" />
-          </motion.div>
-        </div>
-        <div>
-          <p className="kicker">Game</p>
-          <h2 className="mt-2 text-2xl font-semibold">The first 300 game is being designed.</h2>
-          <p className="mt-2 text-muted">
-            Until it launches, a round only proves the mechanics: it deducts {formatTokenAmount(BigInt(state.roundCost))} tokens from your game balance.
-          </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button className="btn btn-gold" onClick={play} disabled={!canPlay}>
-              {phase.name === "playing" ? <Spinner size={16} /> : null}
-              Start round · {formatTokenAmount(BigInt(state.roundCost))} tokens
-            </button>
-            <AnimatePresence mode="wait">
-              {phase.name === "played" && (
-                <motion.span key={phase.roundId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm text-positive">
-                  Round #{phase.roundId} started.
-                </motion.span>
-              )}
-            </AnimatePresence>
-            {phase.name === "error" && <span className="text-sm text-danger">{phase.message}</span>}
-            {state.balance < state.roundCost && phase.name !== "error" && <span className="text-sm text-faint">Deposit tokens to play.</span>}
-          </div>
-        </div>
-      </div>
     </section>
   );
 }
@@ -403,17 +355,27 @@ function History({ state }: { state: GameState }) {
         </ul>
       </div>
       <div className="rounded-3xl border border-line p-6">
-        <h3 className="font-semibold">Rounds</h3>
+        <h3 className="font-semibold">Bets</h3>
         <ul className="mt-3 divide-y divide-line text-sm">
-          {state.rounds.length === 0 && <li className="py-2 text-faint">No rounds yet.</li>}
+          {state.rounds.length === 0 && <li className="py-2 text-faint">No bets yet.</li>}
           {state.rounds.map((round) => (
             <li key={round.id} className="flex items-center justify-between gap-3 py-2.5">
-              <span>Round #{round.id}</span>
-              <span className="tabular-nums text-muted">−{formatTokenAmount(BigInt(round.cost))} tokens</span>
+              <span className="min-w-0">
+                <span className="block truncate">{isKnownGame(round.game) ? GAME_COPY[round.game].title : round.game}</span>
+                <span className="block truncate text-xs text-faint">{roundSummary(round)}</span>
+              </span>
+              <span className={`shrink-0 tabular-nums ${round.payout > 0 ? "text-positive" : "text-muted"}`}>
+                {round.payout > 0 ? `+${formatTokenAmount(BigInt(round.payout - round.bet))}` : `−${formatTokenAmount(BigInt(round.bet))}`}
+              </span>
             </li>
           ))}
         </ul>
       </div>
     </section>
   );
+}
+
+function FairnessSection({ state }: { state: GameState }) {
+  const outcomes = useMemo(() => Object.fromEntries(state.games.map((game) => [game.id, game.outcomes])), [state.games]);
+  return <FairnessCard rounds={state.rounds} outcomes={outcomes} load={loadFairness} rotate={rotateSeed} />;
 }

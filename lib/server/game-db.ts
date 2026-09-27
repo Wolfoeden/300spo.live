@@ -10,6 +10,11 @@ export const GAME_ERRORS = new Set([
   "insufficient_balance",
   "transfer_not_found",
   "allocation_taken",
+  "invalid_bet",
+  "invalid_choice",
+  "invalid_client_seed",
+  "invalid_bet_limits",
+  "game_not_found",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -17,12 +22,45 @@ export const gameErrorCode = (error: unknown) =>
 
 export type GameState = {
   enabled: boolean;
-  roundCost: number;
   minDeposit: number;
   treasuryAddress: string | null;
+  bets: { min: number; max: number; step: number };
+  games: { id: string; name: string; outcomes: number; payoutBps: number; enabled: boolean }[];
   balance: number;
   deposits: { reference: string; requested: number; received: number | null; status: string; txHash: string | null; createdAt: string }[];
-  rounds: { id: number; game: string; cost: number; createdAt: string }[];
+  rounds: {
+    id: number;
+    game: string;
+    bet: number;
+    choice: number;
+    outcome: number;
+    payout: number;
+    nonce: number;
+    serverSeedHash: string;
+    clientSeed: string;
+    createdAt: string;
+  }[];
+};
+
+export type PlayResult = {
+  roundId: number;
+  game: string;
+  bet: number;
+  choice: number;
+  outcome: number;
+  win: boolean;
+  payout: number;
+  balance: number;
+  nonce: number;
+  serverSeedHash: string;
+  clientSeed: string;
+};
+
+export type Fairness = {
+  serverSeedHash: string;
+  clientSeed: string;
+  nonce: number;
+  revealed: { serverSeed: string; serverSeedHash: string; clientSeed: string; lastNonce: number; revealedAt: string }[];
 };
 
 export const gameDb = {
@@ -44,11 +82,21 @@ export const gameDb = {
   watcherState: () => one<{ treasuryAddress: string | null; scannedBlockHeight: number }>(db()`select game.watcher_state() as result`),
   setScannedBlockHeight: (treasury: string, height: number) => db()`select game.set_scanned_block_height(${treasury}, ${height}::bigint)`,
   recordScan: (scan: Record<string, unknown>) => db()`select game.record_scan(${asJson(scan)})`,
-  startRound: (wallet: string, game: string) =>
-    one<{ roundId: number; cost: number; balance: number }>(db()`select game.start_round(${wallet}, ${game}) as result`),
+  play: (wallet: string, game: string, bet: bigint, choice: number) =>
+    one<PlayResult>(db()`select game.play(${wallet}, ${game}, ${bet.toString()}::bigint, ${choice}::integer) as result`),
+  fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
+  rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),
-  adminUpdateSettings: (enabled: boolean, roundCost: bigint, minDeposit: bigint, treasury: string | null) =>
-    db()`select game.admin_update_settings(${enabled}, ${roundCost.toString()}::bigint, ${minDeposit.toString()}::bigint, ${treasury})`,
+  adminUpdateSettings: (
+    enabled: boolean,
+    bets: { min: bigint; max: bigint; step: bigint },
+    minDeposit: bigint,
+    treasury: string | null,
+  ) =>
+    db()`select game.admin_update_settings(${enabled}, ${bets.min.toString()}::bigint, ${bets.max.toString()}::bigint,
+      ${bets.step.toString()}::bigint, ${minDeposit.toString()}::bigint, ${treasury})`,
+  adminUpdateGame: (id: string, enabled: boolean, payoutBps: number) =>
+    db()`select game.admin_update_game(${id}, ${enabled}, ${payoutBps}::integer)`,
   adminAdjust: (wallet: string, delta: bigint, note: string) =>
     db()`select game.admin_adjust(${wallet}, ${delta.toString()}::bigint, ${note}) as result`,
   adminAssignUnmatched: (txHash: string, wallet: string) => db()`select game.admin_assign_unmatched(${txHash}, ${wallet}) as result`,

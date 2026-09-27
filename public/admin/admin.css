@@ -163,6 +163,9 @@ label.checkbox input { width: auto; }
 .game-row form { display: flex; grid-column: 1 / -1; gap: 8px; margin: 0; }
 .game-row form input { padding: 9px 11px; }
 .game-row form button { padding: 9px 14px; white-space: nowrap; }
+.game-row form.game-form { grid-column: auto; align-items: center; }
+.game-form label.inline { display: flex; align-items: center; gap: 6px; margin: 0; }
+.game-form input.payout { width: 72px; text-align: right; }
 @media (max-width: 560px) {
   .two { grid-template-columns: 1fr; }
   header {
