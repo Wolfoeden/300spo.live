@@ -15,5 +15,6 @@ export const LINKS = {
   cardanoOrg: "https://cardano.org/",
   buyAda: "https://cardanomix.com",
   wallet: "/wallet/",
+  play: "/play/",
   admin: "/admin/",
 } as const;
