@@ -51,8 +51,11 @@ const act = async (body: Record<string, unknown>) => {
       await gameDb.adminAssignUnmatched(String(body.txHash), wallet);
       return json(await gameDb.adminOverview());
     }
-    case "scan":
-      return json({ scan: await scanTreasury(7_000), ...(await gameDb.adminOverview()) });
+    case "scan": {
+      const scan = await scanTreasury(7_000);
+      await gameDb.recordScan({ source: "admin", ...scan });
+      return json({ scan, ...(await gameDb.adminOverview()) });
+    }
     default:
       return json({ error: "Unknown action." }, 400);
   }

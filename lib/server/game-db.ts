@@ -60,6 +60,7 @@ export const gameDb = {
     db()`select game.record_unmatched(${txHash}, ${quantity.toString()}::bigint, ${blockHeight}::bigint)`,
   watcherState: () => one<{ treasuryAddress: string | null; scannedBlockHeight: number }>(db()`select game.watcher_state() as result`),
   setScannedBlockHeight: (treasury: string, height: number) => db()`select game.set_scanned_block_height(${treasury}, ${height}::bigint)`,
+  recordScan: (result: Record<string, unknown>) => db()`select game.record_scan(${db().json(result as postgres.JSONValue)})`,
   startRound: (wallet: string, game: string) =>
     one<{ roundId: number; cost: number; balance: number }>(db()`select game.start_round(${wallet}, ${game}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),
