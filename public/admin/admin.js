@@ -50,7 +50,9 @@ const renderGame = (data) => {
   const { settings, totals } = data;
   document.querySelector("#gameEnabled").checked = settings.enabled;
   document.querySelector("#gameTreasury").value = settings.treasuryAddress || "";
-  document.querySelector("#gameRoundCost").value = settings.roundCost;
+  document.querySelector("#gameMinBet").value = settings.minBet;
+  document.querySelector("#gameMaxBet").value = settings.maxBet;
+  document.querySelector("#gameBetStep").value = settings.betStep;
   document.querySelector("#gameMinDeposit").value = settings.minDeposit;
 
   document.querySelector("#game-totals").replaceChildren(
@@ -58,11 +60,42 @@ const renderGame = (data) => {
       ["Status", settings.enabled ? "Enabled" : "Paused"],
       ["Players", formatAmount(totals.accounts)],
       ["Deposited", `${formatAmount(totals.deposited)} 300`],
-      ["Spent in rounds", `${formatAmount(totals.spent)} 300`],
       ["Open balances", `${formatAmount(totals.balances)} 300`],
       ["Rounds", formatAmount(totals.rounds)],
+      ["Bets", `${formatAmount(totals.bets)} 300`],
+      ["Paid out", `${formatAmount(totals.payouts)} 300`],
       ["Last scan", describeScan(settings.lastScanAt, settings.lastScanResult)],
     ].map(([label, value]) => element("div", {}, [element("dt", { textContent: label }), element("dd", { textContent: value })])),
+  );
+
+  document.querySelector("#game-games").replaceChildren(
+    element(
+      "div",
+      { className: "game-list" },
+      data.games.map((game) => {
+        const enabled = element("input", { type: "checkbox", checked: game.enabled });
+        const payout = element("input", { value: String(game.payoutBps / 10000), inputMode: "decimal", required: true, className: "payout" });
+        const form = element("form", { className: "game-form" }, [
+          element("label", { className: "checkbox" }, [enabled, " on"]),
+          element("label", { className: "inline" }, [payout, "×"]),
+          element("button", { type: "submit", textContent: "Save" }),
+        ]);
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await runGameAction({ action: "game", id: game.id, enabled: enabled.checked, payout: payout.value.trim().replace(",", ".") }, `${game.name} saved.`);
+        });
+        return element("div", { className: "game-row" }, [
+          element("span", {}, [
+            element("strong", { textContent: game.name }),
+            element("span", {
+              className: "muted",
+              textContent: ` · ${game.outcomes} outcomes · ${formatAmount(game.rounds)} rounds · ${formatAmount(game.bets)} bet · ${formatAmount(game.payouts)} paid`,
+            }),
+          ]),
+          form,
+        ]);
+      }),
+    ),
   );
 
   const unmatched = document.querySelector("#game-unmatched");
@@ -138,7 +171,9 @@ document.querySelector("#game-settings").addEventListener("submit", (event) => {
       action: "settings",
       enabled: document.querySelector("#gameEnabled").checked,
       treasuryAddress: document.querySelector("#gameTreasury").value.trim(),
-      roundCost: document.querySelector("#gameRoundCost").value.trim(),
+      minBet: document.querySelector("#gameMinBet").value.trim(),
+      maxBet: document.querySelector("#gameMaxBet").value.trim(),
+      betStep: document.querySelector("#gameBetStep").value.trim(),
       minDeposit: document.querySelector("#gameMinDeposit").value.trim(),
     },
     "Game settings saved.",
@@ -158,14 +193,19 @@ document.querySelector("#game-adjust").addEventListener("submit", (event) => {
 });
 document.querySelector("#game-scan").addEventListener("click", () => runGameAction({ action: "scan" }, "Scan finished."));
 const showEditor = async () => {
-  const content = await request("/api/admin/content");
-  for (const key of fields)
-    document.querySelector(`#${key}`).value = content[key] || "";
-  for (const key of ["buyImage", "spoImage", "drepImage"])
-    document.querySelector(`#${key}Preview`).src = content[key] || "";
   loginPanel.hidden = true;
-  editorPanel.hidden = false;
   loadGame();
+  // The content form stays hidden if loading fails, so it can never save empty fields.
+  try {
+    const content = await request("/api/admin/content");
+    for (const key of fields)
+      document.querySelector(`#${key}`).value = content[key] || "";
+    for (const key of ["buyImage", "spoImage", "drepImage"])
+      document.querySelector(`#${key}Preview`).src = content[key] || "";
+    editorPanel.hidden = false;
+  } catch (error) {
+    message.textContent = `Homepage content unavailable: ${error.message}`;
+  }
 };
 document
   .querySelector("#login-form")

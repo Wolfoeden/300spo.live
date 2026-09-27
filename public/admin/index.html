@@ -110,18 +110,25 @@
         </div>
         <dl id="game-totals" class="game-totals"></dl>
         <form id="game-settings">
-          <label class="checkbox"><input id="gameEnabled" type="checkbox" /> Deposits and rounds enabled</label>
+          <label class="checkbox"><input id="gameEnabled" type="checkbox" /> Deposits and games enabled</label>
           <label
             >Treasury address (receives deposits)<input id="gameTreasury" placeholder="addr1…" autocomplete="off" spellcheck="false"
           /></label>
           <div class="two">
-            <label>Round cost (300 tokens)<input id="gameRoundCost" inputmode="numeric" required /></label>
+            <label>Minimum bet<input id="gameMinBet" inputmode="numeric" required /></label>
+            <label>Maximum bet<input id="gameMaxBet" inputmode="numeric" required /></label>
+          </div>
+          <div class="two">
+            <label>Bet step<input id="gameBetStep" inputmode="numeric" required /></label>
             <label>Minimum deposit (300 tokens)<input id="gameMinDeposit" inputmode="numeric" required /></label>
           </div>
           <div class="actions">
             <button type="submit">Save game settings</button><a href="/play/" target="_blank">Open /play ↗</a>
           </div>
         </form>
+        <h2>Games</h2>
+        <p class="hint">Payout is the multiple of the bet paid on a correct pick. Fair odds: 2× for two outcomes, 5× for the race.</p>
+        <div id="game-games"></div>
         <h2>Transfers without a deposit reference</h2>
         <p class="hint">300 sent to the treasury without the website's reference. Assign it to the sender's wallet.</p>
         <div id="game-unmatched"></div>

@@ -38,10 +38,11 @@ features such as token-based games.
 On phones without wallet extensions the dialog explains how to open the site
 in a wallet app's built-in browser.
 
-## Game balance (`/play`)
+## Game balance and games (`/play`)
 
-Players deposit 300 tokens and spend them on rounds. **There are no winnings
-and no withdrawals**; deposits are game credit only.
+Players deposit 300 tokens as game credit and bet it on three games. Winnings
+are game credit too. **There are no withdrawals**: nothing ever leaves the
+treasury towards a player.
 
 1. `/play` (not linked from the landing page, `noindex`) requires the wallet
    sign-in. The session's stake address is the account.
@@ -53,14 +54,37 @@ and no withdrawals**; deposits are game credit only.
    reference in the metadata decides the account; transfers without one are
    listed in `/admin/` for manual assignment. While a player waits,
    `/api/game/deposit-check` settles their transaction directly.
-4. A round (`/api/game/round`) deducts the configured cost in one database
-   transaction; the balance can never go negative.
+4. A bet (`/api/game/play` with game, bet and pick) is settled in one database
+   transaction by `game.play()`: the bet is deducted, the outcome drawn and a
+   correct pick credited with bet × payout. The balance can never go negative.
+
+| Game | Outcomes | Default payout |
+| --- | --- | --- |
+| `coin-flip` — Xerxes or 300 | 2 | 2× |
+| `horse-race` — five horses | 5 | 5× |
+| `xerxes-vs-robot` — Xerxes against the AI robot | 2 | 2× |
+
+The defaults are fair odds (no house edge). Bets run from 300 to 3,000 in
+steps of 300. Limits, payouts and per-game switches are set in `/admin/`.
+What each outcome index means lives in `lib/game/catalog.ts`; the animations
+in `components/game/arena.tsx` only replay the outcome the server returned.
+
+**Provably fair.** Every wallet has a secret server seed whose SHA-256 is shown
+in advance, a client seed it can choose, and a nonce counting its bets:
+
+```
+outcome = floor(u32(HMAC-SHA256(server seed, "<client seed>:<nonce>")[0..4]) × outcomes / 2^32)
+```
+
+"Reveal seed & start new" (`/api/game/seed`) publishes the old server seed;
+the page then checks its hash and recomputes every listed round in the browser
+(`lib/game/fair.ts`).
 
 Data lives in the Supabase project `300` (schema `game`, see
 `supabase/migrations`). The tables are only reachable through `SECURITY
 DEFINER` functions; Netlify connects as the role `game_api`, which may execute
-those functions and nothing else. Treasury address, round cost, minimum
-deposit and the on/off switch are set in `/admin/`.
+those functions and nothing else. Treasury address, bet limits, minimum
+deposit, games and the on/off switch are set in `/admin/`.
 
 ## Drip rewards
 
@@ -86,7 +110,8 @@ per-epoch reward budgets in ADA, NIGHT or other tokens.
 
 | Name | Used by |
 | --- | --- |
-| `ADMIN_PASSWORD` | Admin CMS login |
+| `ADMIN_WALLETS` | Comma-separated stake (or payment) addresses that may open `/admin/` after the wallet sign-in; an admin session lasts at most 12 hours. |
+| `ADMIN_PASSWORD` | Optional fallback password login for `/admin/`. Remove it once the wallet login works; the password form then disappears. |
 | `WALLET_SESSION_SECRET` | Signs wallet sign-in challenges and sessions; at least 32 random characters. Without it `/api/wallet-auth/*` answers `503 not_configured`. |
 | `GAME_DATABASE_URL` | Pooler connection string for the `game_api` role (`aws-1-eu-west-1.pooler.supabase.com:6543`). Locally in `.env.local`, which `pnpm preview` reads. |
 

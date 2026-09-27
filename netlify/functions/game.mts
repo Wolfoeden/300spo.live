@@ -23,6 +23,7 @@ const sameOrigin = (request: Request) => {
 
 const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
+  if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!sameOrigin(request)) return json({ error: "forbidden_origin" }, 403);
   const body = await readBody(request);
@@ -55,10 +56,17 @@ const handle = async (request: Request, action: string, wallet: string) => {
     return json({ status: result.credited ? "confirmed" : "pending", confirmations: result.confirmations });
   }
 
-  if (action === "round") {
-    const game = String(body.game ?? "placeholder");
-    if (!GAME_ID.test(game)) return json({ error: "invalid_game" }, 400);
-    return json(await gameDb.startRound(wallet, game));
+  if (action === "play") {
+    const game = String(body.game ?? "");
+    const choice = Number(body.choice);
+    const bet = /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : null;
+    if (!GAME_ID.test(game) || bet === null || !Number.isInteger(choice)) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.play(wallet, game, bet, choice));
+  }
+
+  if (action === "seed") {
+    const clientSeed = body.clientSeed === undefined || body.clientSeed === "" ? null : String(body.clientSeed);
+    return json(await gameDb.rotateSeed(wallet, clientSeed));
   }
 
   return json({ error: "not_found" }, 404);

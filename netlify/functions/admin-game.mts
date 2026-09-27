@@ -6,6 +6,10 @@ import { scanTreasury } from "../../lib/server/game-scan";
 import { isAuthenticated, json } from "./_shared/admin-auth.mjs";
 
 const TX_HASH = /^[0-9a-f]{64}$/;
+const ERROR_TEXT: Record<string, string> = {
+  invalid_bet_limits: "Minimum and maximum bet must be multiples of the step, and the minimum cannot exceed the maximum.",
+  game_not_found: "Unknown game.",
+};
 
 const toBigInt = (value: unknown) => {
   try {
@@ -30,13 +34,23 @@ const mainnetAddress = (value: unknown, kind: "payment" | "wallet") => {
 const act = async (body: Record<string, unknown>) => {
   switch (body.action) {
     case "settings": {
-      const roundCost = toBigInt(body.roundCost);
+      const bets = { min: toBigInt(body.minBet), max: toBigInt(body.maxBet), step: toBigInt(body.betStep) };
       const minDeposit = toBigInt(body.minDeposit);
       const treasury = body.treasuryAddress ? mainnetAddress(body.treasuryAddress, "payment") : null;
-      if (!roundCost || roundCost <= 0n || !minDeposit || minDeposit <= 0n) return json({ error: "Amounts must be positive whole numbers." }, 400);
+      if (!bets.min || !bets.max || !bets.step || !minDeposit || [bets.min, bets.max, bets.step, minDeposit].some((value) => value! <= 0n)) {
+        return json({ error: "Amounts must be positive whole numbers." }, 400);
+      }
       if (body.treasuryAddress && !treasury) return json({ error: "The treasury must be a Cardano mainnet payment address (addr1…)." }, 400);
       if (body.enabled === true && !treasury) return json({ error: "Set a treasury address before enabling deposits." }, 400);
-      await gameDb.adminUpdateSettings(body.enabled === true, roundCost, minDeposit, treasury);
+      await gameDb.adminUpdateSettings(body.enabled === true, { min: bets.min, max: bets.max, step: bets.step }, minDeposit, treasury);
+      return json(await gameDb.adminOverview());
+    }
+    case "game": {
+      const payout = Number(body.payout);
+      if (!/^[a-z0-9-]{1,32}$/.test(String(body.id)) || !(payout >= 1 && payout <= 100)) {
+        return json({ error: "The payout must be between 1× and 100×." }, 400);
+      }
+      await gameDb.adminUpdateGame(String(body.id), body.enabled === true, Math.round(payout * 10000));
       return json(await gameDb.adminOverview());
     }
     case "adjust": {
@@ -70,7 +84,7 @@ export default async (request: Request) => {
     return json({ error: "Method not allowed." }, 405, { allow: "GET, POST" });
   } catch (error) {
     const code = gameErrorCode(error);
-    if (code) return json({ error: code.replaceAll("_", " ") }, 409);
+    if (code) return json({ error: ERROR_TEXT[code] ?? code.replaceAll("_", " ") }, 409);
     if (error instanceof DatabaseConfigError) return json({ error: "Game database is not configured." }, 503);
     console.error("[admin-game]", error);
     return json({ error: error instanceof Error ? error.message : "Request failed." }, 500);
