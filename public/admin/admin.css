@@ -132,7 +132,25 @@ button {
 .image-field img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #111; }
 .image-field span, .image-field input[type="file"] { padding: 0 10px; }
 .image-field input[type="file"] { padding-bottom: 12px; color: #aaa; font-size: 12px; }
+.game-card { margin-top: 24px; }
+.game-card h2 { margin: 36px 0 8px; font-size: 18px; }
+.game-card .hint { margin: 0 0 12px; color: #8f8b82; font-size: 13px; }
+.game-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 28px 0 0; }
+.game-totals div { padding: 12px; border: 1px solid #3a3935; border-radius: 10px; }
+.game-totals dt { color: #8f8b82; font-size: 12px; }
+.game-totals dd { margin: 4px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+label.checkbox { display: flex; align-items: center; gap: 10px; }
+label.checkbox input { width: auto; }
+.game-list { display: grid; gap: 8px; font-size: 13px; }
+.game-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; padding: 10px 12px; border: 1px solid #3a3935; border-radius: 9px; }
+.game-row code { overflow-wrap: anywhere; color: #d8d3c7; }
+.game-row .muted { color: #8f8b82; }
+.game-row form { display: flex; grid-column: 1 / -1; gap: 8px; margin: 0; }
+.game-row form input { padding: 9px 11px; }
+.game-row form button { padding: 9px 14px; white-space: nowrap; }
 @media (max-width: 560px) {
+  .two { grid-template-columns: 1fr; }
   header {
     margin-bottom: 36px;
   }

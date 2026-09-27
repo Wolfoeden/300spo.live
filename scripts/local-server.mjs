@@ -13,6 +13,14 @@ const functionsDir = join(process.cwd(), "netlify", "functions");
 const port = Number(process.env.PORT || 5177);
 const apiOnly = process.argv.includes("--api-only");
 
+// Local secrets (gitignored), e.g. GAME_DATABASE_URL; real environment variables win.
+if (existsSync(".env.local")) {
+  for (const line of (await readFile(".env.local", "utf8")).split(/\r?\n/)) {
+    const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
+  }
+}
+
 globalThis.Netlify ??= { env: { get: (key) => process.env[key] } };
 
 const types = {

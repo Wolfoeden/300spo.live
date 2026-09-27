@@ -86,7 +86,7 @@ if (missingLanding.length) {
   process.exit(1);
 }
 
-for (const script of ["public/wallet/wallet.js", "scripts/integrate-wallet-web.mjs", "scripts/local-server.mjs"]) {
+for (const script of ["public/wallet/wallet.js", "public/admin/admin.js", "scripts/integrate-wallet-web.mjs", "scripts/local-server.mjs"]) {
   execFileSync(process.execPath, ["--check", script], { stdio: "inherit" });
 }
 

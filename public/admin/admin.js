@@ -19,7 +19,134 @@ const request = async (url, options) => {
 const showLogin = () => {
   loginPanel.hidden = false;
   editorPanel.hidden = true;
+  gamePanel.hidden = true;
 };
+
+// --- Game balance ---------------------------------------------------------
+const gamePanel = document.querySelector("#game-panel");
+const formatAmount = (value) => new Intl.NumberFormat("en-US").format(Number(value || 0));
+const shorten = (value) => (value && value.length > 24 ? `${value.slice(0, 14)}…${value.slice(-8)}` : value || "");
+const element = (tag, props = {}, children = []) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+};
+const txLink = (hash) =>
+  element("a", { href: `https://cardanoscan.io/transaction/${hash}`, target: "_blank", rel: "noreferrer", textContent: `${hash.slice(0, 10)}… ↗` });
+
+const gameRequest = (body) =>
+  request("/api/admin/game", body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
+
+const renderGame = (data) => {
+  const { settings, totals } = data;
+  document.querySelector("#gameEnabled").checked = settings.enabled;
+  document.querySelector("#gameTreasury").value = settings.treasuryAddress || "";
+  document.querySelector("#gameRoundCost").value = settings.roundCost;
+  document.querySelector("#gameMinDeposit").value = settings.minDeposit;
+
+  document.querySelector("#game-totals").replaceChildren(
+    ...[
+      ["Status", settings.enabled ? "Enabled" : "Paused"],
+      ["Players", formatAmount(totals.accounts)],
+      ["Deposited", `${formatAmount(totals.deposited)} 300`],
+      ["Spent in rounds", `${formatAmount(totals.spent)} 300`],
+      ["Open balances", `${formatAmount(totals.balances)} 300`],
+      ["Rounds", formatAmount(totals.rounds)],
+    ].map(([label, value]) => element("div", {}, [element("dt", { textContent: label }), element("dd", { textContent: value })])),
+  );
+
+  const unmatched = document.querySelector("#game-unmatched");
+  unmatched.replaceChildren(
+    data.unmatched.length
+      ? element(
+          "div",
+          { className: "game-list" },
+          data.unmatched.map((transfer) => {
+            const wallet = element("input", { placeholder: "Sender wallet (stake1… or addr1…)", required: true });
+            const form = element("form", {}, [wallet, element("button", { type: "submit", textContent: "Assign" })]);
+            form.addEventListener("submit", async (event) => {
+              event.preventDefault();
+              await runGameAction({ action: "assign", txHash: transfer.tx_hash, wallet: wallet.value }, "Transfer assigned.");
+            });
+            return element("div", { className: "game-row" }, [
+              element("span", { textContent: `${formatAmount(transfer.quantity)} 300` }),
+              txLink(transfer.tx_hash),
+              form,
+            ]);
+          }),
+        )
+      : element("p", { className: "hint", textContent: "Nothing to assign." }),
+  );
+
+  const deposits = document.querySelector("#game-deposits");
+  deposits.replaceChildren(
+    data.deposits.length
+      ? element(
+          "div",
+          { className: "game-list" },
+          data.deposits.map((deposit) =>
+            element("div", { className: "game-row" }, [
+              element("span", {}, [
+                element("strong", { textContent: `${formatAmount(deposit.received ?? deposit.requested)} 300` }),
+                element("span", { className: "muted", textContent: ` · ${deposit.status} · ${new Date(deposit.created_at).toLocaleString()}` }),
+              ]),
+              deposit.tx_hash ? txLink(deposit.tx_hash) : element("span", { className: "muted", textContent: "no tx yet" }),
+              element("code", { textContent: shorten(deposit.wallet), title: deposit.wallet }),
+            ]),
+          ),
+        )
+      : element("p", { className: "hint", textContent: "No deposits yet." }),
+  );
+};
+
+const runGameAction = async (body, success) => {
+  message.textContent = "Working…";
+  try {
+    const data = await gameRequest(body);
+    renderGame(data);
+    message.textContent = data.scan
+      ? `Scan finished: ${data.scan.credited} credited, ${data.scan.unmatched} unassigned, ${data.scan.pending} still confirming.`
+      : success;
+  } catch (error) {
+    message.textContent = error.message;
+  }
+};
+
+const loadGame = async () => {
+  gamePanel.hidden = false;
+  try {
+    renderGame(await gameRequest());
+  } catch (error) {
+    document.querySelector("#game-totals").replaceChildren(element("p", { className: "hint", textContent: `Game data unavailable: ${error.message}` }));
+  }
+};
+
+document.querySelector("#game-settings").addEventListener("submit", (event) => {
+  event.preventDefault();
+  runGameAction(
+    {
+      action: "settings",
+      enabled: document.querySelector("#gameEnabled").checked,
+      treasuryAddress: document.querySelector("#gameTreasury").value.trim(),
+      roundCost: document.querySelector("#gameRoundCost").value.trim(),
+      minDeposit: document.querySelector("#gameMinDeposit").value.trim(),
+    },
+    "Game settings saved.",
+  );
+});
+document.querySelector("#game-adjust").addEventListener("submit", (event) => {
+  event.preventDefault();
+  runGameAction(
+    {
+      action: "adjust",
+      wallet: document.querySelector("#adjustWallet").value.trim(),
+      delta: document.querySelector("#adjustDelta").value.trim().replace("−", "-"),
+      note: document.querySelector("#adjustNote").value.trim(),
+    },
+    "Correction applied.",
+  );
+});
+document.querySelector("#game-scan").addEventListener("click", () => runGameAction({ action: "scan" }, "Scan finished."));
 const showEditor = async () => {
   const content = await request("/api/admin/content");
   for (const key of fields)
@@ -28,6 +155,7 @@ const showEditor = async () => {
     document.querySelector(`#${key}Preview`).src = content[key] || "";
   loginPanel.hidden = true;
   editorPanel.hidden = false;
+  loadGame();
 };
 document
   .querySelector("#login-form")

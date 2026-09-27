@@ -97,6 +97,43 @@
           </div>
         </form>
       </section>
+      <section id="game-panel" class="card game-card" hidden>
+        <div class="editor-head">
+          <div>
+            <p class="eyebrow">GAME</p>
+            <h1>Game balance</h1>
+          </div>
+          <button id="game-scan" class="secondary" type="button">Scan treasury now</button>
+        </div>
+        <dl id="game-totals" class="game-totals"></dl>
+        <form id="game-settings">
+          <label class="checkbox"><input id="gameEnabled" type="checkbox" /> Deposits and rounds enabled</label>
+          <label
+            >Treasury address (receives deposits)<input id="gameTreasury" placeholder="addr1…" autocomplete="off" spellcheck="false"
+          /></label>
+          <div class="two">
+            <label>Round cost (300 tokens)<input id="gameRoundCost" inputmode="numeric" required /></label>
+            <label>Minimum deposit (300 tokens)<input id="gameMinDeposit" inputmode="numeric" required /></label>
+          </div>
+          <div class="actions">
+            <button type="submit">Save game settings</button><a href="/play/" target="_blank">Open /play ↗</a>
+          </div>
+        </form>
+        <h2>Transfers without a deposit reference</h2>
+        <p class="hint">300 sent to the treasury without the website's reference. Assign it to the sender's wallet.</p>
+        <div id="game-unmatched"></div>
+        <h2>Recent deposits</h2>
+        <div id="game-deposits"></div>
+        <h2>Manual correction</h2>
+        <form id="game-adjust">
+          <label>Wallet (stake1… or addr1…)<input id="adjustWallet" autocomplete="off" spellcheck="false" required /></label>
+          <div class="two">
+            <label>Amount (+ adds, − removes)<input id="adjustDelta" inputmode="numeric" required /></label>
+            <label>Note<input id="adjustNote" maxlength="200" /></label>
+          </div>
+          <div class="actions"><button type="submit">Apply correction</button></div>
+        </form>
+      </section>
       <p id="message" role="status"></p>
     </main>
     <script src="/admin/admin.js"></script>
