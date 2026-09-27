@@ -135,6 +135,7 @@ button {
 .game-card { margin-top: 24px; }
 .game-card h2 { margin: 36px 0 8px; font-size: 18px; }
 .game-card .hint { margin: 0 0 12px; color: #8f8b82; font-size: 13px; }
+.game-card .hint a { color: #f4d675; }
 .game-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 28px 0 0; }
 .game-totals div { padding: 12px; border: 1px solid #3a3935; border-radius: 10px; }
 .game-totals dt { color: #8f8b82; font-size: 12px; }

@@ -1,5 +1,6 @@
 import type { Config, Context } from "@netlify/functions";
-import { GameConfigError, gameDb, gameErrorCode } from "../../lib/server/game-db";
+import { DatabaseConfigError } from "../../lib/server/db";
+import { gameDb, gameErrorCode } from "../../lib/server/game-db";
 import { checkDepositTx } from "../../lib/server/game-scan";
 import { json, readSession } from "./_shared/wallet-auth";
 
@@ -71,7 +72,7 @@ export default async (request: Request, context: Context) => {
   } catch (error) {
     const code = gameErrorCode(error);
     if (code) return json({ error: code }, code === "deposit_not_found" ? 404 : 409);
-    if (error instanceof GameConfigError) {
+    if (error instanceof DatabaseConfigError) {
       console.error(`[game] ${error.message}`);
       return json({ error: "not_configured" }, 503);
     }

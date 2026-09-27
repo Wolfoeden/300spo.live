@@ -8,6 +8,7 @@ import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { depositMetadata } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
+import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
 import { useWallet } from "../wallet/wallet-provider";
 
@@ -134,6 +135,10 @@ export function GamePage() {
             <History state={state} />
           </div>
         )}
+      </div>
+
+      <div className="mt-5">
+        <DripCard />
       </div>
     </div>
   );
