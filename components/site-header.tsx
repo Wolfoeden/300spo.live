@@ -21,7 +21,7 @@ export function Brand() {
       <img src="/300-logo.jpg" alt="" className="size-9 rounded-full ring-1 ring-gold/40" />
       <span className="leading-none">
         <strong className="block text-base font-bold tracking-tight">300</strong>
-        <small className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-muted">SPO &amp; DRep</small>
+        <small className="hidden whitespace-nowrap font-mono text-[0.62rem] uppercase tracking-[0.16em] text-muted min-[400px]:block">SPO &amp; DRep</small>
       </span>
     </a>
   );
@@ -44,7 +44,7 @@ export function SiteHeader() {
         scrolled || open ? "border-b border-line bg-ink/75 backdrop-blur-xl" : "border-b border-transparent"
       }`}
     >
-      <nav className="container-site flex h-[4.5rem] items-center gap-6" aria-label="Primary navigation">
+      <nav className="container-site flex h-[4.5rem] items-center gap-3 sm:gap-6" aria-label="Primary navigation">
         <Brand />
         <div className="ml-6 hidden items-center gap-1 lg:flex">
           {NAV.map((item) => (

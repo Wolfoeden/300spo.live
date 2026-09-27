@@ -37,10 +37,10 @@ export function BlockArrivals() {
           </span>
         </Reveal>
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <Reveal className="glass overflow-hidden rounded-3xl p-5 sm:p-8">
             <BlockRail tipHeight={metrics?.chain?.blockHeight ?? null} />
-            <div className="mt-8 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
               {[
                 ["Network", "Block rewards + fees"],
                 ["Pool", "Fixed cost + margin"],

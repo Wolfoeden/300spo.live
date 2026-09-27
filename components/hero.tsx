@@ -16,7 +16,7 @@ export function Hero() {
   return (
     <section id="top" className="relative overflow-hidden pt-28 sm:pt-32">
       <HeroBackdrop />
-      <div className="container-site relative grid items-center gap-12 pb-16 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8 lg:pb-24">
+      <div className="container-site relative grid grid-cols-1 items-center gap-12 pb-16 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8 lg:pb-24">
         <div>
           <motion.span
             className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs text-muted"

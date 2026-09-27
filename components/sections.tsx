@@ -15,7 +15,7 @@ export function Partners() {
       <div className="container-site">
         <Reveal className="relative overflow-hidden rounded-[2rem] border border-line bg-gradient-to-br from-raised via-panel to-ink p-8 sm:p-12 lg:p-16">
           <div aria-hidden="true" className="absolute -right-24 -top-24 size-80 rounded-full bg-gold/15 blur-[100px]" />
-          <div className="relative grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div className="relative grid grid-cols-1 gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
             <div>
               <p className="kicker">{content.partnerKicker}</p>
               <h2 id="partners-title" className="mt-4 text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">
@@ -23,7 +23,7 @@ export function Partners() {
               </h2>
               <p className="mt-5 max-w-lg text-muted">{content.partnerBody}</p>
             </div>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5" aria-label="Midnight and RealFi">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-5" aria-label="Midnight and RealFi">
               {[
                 ["/partners/midnight-logo-white.svg", "Midnight", "Privacy & identity"],
                 ["/partners/realfi-logo-white.svg", "RealFi", "Real-world finance"],
@@ -92,7 +92,7 @@ export function Participate() {
           </h2>
           <p className="mt-4 text-muted">Three direct paths. You remain in control at every step.</p>
         </Reveal>
-        <div className="mt-14 grid gap-5 md:grid-cols-3">
+        <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
           {cards.map((card, index) => (
             <Reveal key={card.title} delay={index * 0.08} as="article" className="group relative flex flex-col overflow-hidden rounded-3xl border border-line bg-panel transition hover:-translate-y-1 hover:border-gold/30">
               <div className="relative aspect-[16/10] overflow-hidden">
@@ -145,7 +145,7 @@ export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <section id="faq" aria-labelledby="faq-title" className="border-t border-line py-24 sm:py-32">
-      <div className="container-site grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+      <div className="container-site grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr]">
         <Reveal>
           <p className="kicker">Cardano FAQ</p>
           <h2 id="faq-title" className="mt-4 text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">

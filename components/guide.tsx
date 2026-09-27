@@ -63,7 +63,7 @@ export function Guide() {
   return (
     <section id="guide" aria-labelledby="guide-title" className="relative py-24 sm:py-32">
       <div className="container-site">
-        <Reveal className="grid gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-end">
+        <Reveal className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-end">
           <div>
             <p className="kicker">Cardano protocol guide</p>
             <h2 id="guide-title" className="mt-4 text-4xl font-semibold leading-[1.05] tracking-[-0.03em] sm:text-5xl">
@@ -77,7 +77,7 @@ export function Guide() {
           </p>
         </Reveal>
 
-        <div className="mt-16 grid gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16">
+        <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16">
           <article>
             <GuideSection number="01" id="what-cardano" title="What is Cardano?">
               <p>
@@ -105,7 +105,7 @@ export function Guide() {
                 Delegation assigns your stake weight to a pool without transferring ownership. It is Cardano&apos;s way of allowing every ADA holder to
                 support network security without operating a server around the clock.
               </p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {BENEFITS.map(([title, text]) => (
                   <div key={title} className="glass flex gap-3 rounded-2xl p-4">
                     <span className="grid size-7 shrink-0 place-items-center rounded-full bg-positive/10 text-positive">
@@ -166,7 +166,7 @@ export function Guide() {
                 300 is built around proof rather than promises. Pool status, stake, delegators, block production and governance delegation are shown
                 from public Cardano data.
               </p>
-              <ul className="grid gap-2 sm:grid-cols-2">
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {TRUST.map((item) => (
                   <li key={item} className="flex items-start gap-2 text-sm">
                     <Check size={16} className="mt-0.5 shrink-0 text-gold" />
@@ -187,7 +187,7 @@ export function Guide() {
                 </p>
                 <DrepSummary />
                 <h4 className="pt-2 text-lg font-semibold text-text">How 300 approaches governance</h4>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {PRINCIPLES.map(([title, text], index) => (
                     <div key={title} className="rounded-2xl border border-line p-4">
                       <span className="font-mono text-xs text-gold">0{index + 1}</span>
@@ -226,7 +226,7 @@ function DrepSummary() {
   const { metrics } = useLiveData();
   const drep = metrics?.drep;
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div className="glass rounded-2xl p-4">
         <p className="font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint">300 DRep status</p>
         <p className="mt-1 text-xl font-semibold text-positive">{capitalize(drep?.status)}</p>
