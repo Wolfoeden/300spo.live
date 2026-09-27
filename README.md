@@ -62,6 +62,26 @@ DEFINER` functions; Netlify connects as the role `game_api`, which may execute
 those functions and nothing else. Treasury address, round cost, minimum
 deposit and the on/off switch are set in `/admin/`.
 
+## Drip rewards
+
+Wallets that are delegated to the 300 pool and hold at least the minimum
+amount of 300 tokens (default 3,000,000, summed per stake key) share
+per-epoch reward budgets in ADA, NIGHT or other tokens.
+
+- `drip-run` (scheduled hourly, production only) takes one snapshot per epoch
+  from Koios (`asset_addresses`, `pool_delegators`), computes the shares
+  (`lib/drip/allocate.ts`: equal, by 300 held or by ADA delegated) and stores
+  them in the Supabase schema `drip`. It also confirms payouts that reached 5
+  blocks and releases reserved payouts that never landed.
+- `/admin/drip/` (admin session): budgets, minimum, split, "Run now",
+  snapshots and payouts. A payout pays up to 40 wallets in one transaction
+  built in the browser and signed by the connected distribution wallet; the
+  rewards are reserved under the transaction hash before signing, so they are
+  never paid twice. Token outputs below Cardano's minimum ADA are topped up
+  from the distribution wallet.
+- `/play` shows each wallet whether it qualifies and its waiting and paid
+  rewards (`/api/drip/status`).
+
 ## Environment variables (Netlify)
 
 | Name | Used by |

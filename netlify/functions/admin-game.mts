@@ -1,6 +1,7 @@
 import type { Config } from "@netlify/functions";
 import { addressBytesFromWallet, addressToBech32, isRewardAddress } from "../../lib/cardano/address";
-import { GameConfigError, gameDb, gameErrorCode } from "../../lib/server/game-db";
+import { DatabaseConfigError } from "../../lib/server/db";
+import { gameDb, gameErrorCode } from "../../lib/server/game-db";
 import { scanTreasury } from "../../lib/server/game-scan";
 import { isAuthenticated, json } from "./_shared/admin-auth.mjs";
 
@@ -70,7 +71,7 @@ export default async (request: Request) => {
   } catch (error) {
     const code = gameErrorCode(error);
     if (code) return json({ error: code.replaceAll("_", " ") }, 409);
-    if (error instanceof GameConfigError) return json({ error: "Game database is not configured." }, 503);
+    if (error instanceof DatabaseConfigError) return json({ error: "Game database is not configured." }, 503);
     console.error("[admin-game]", error);
     return json({ error: error instanceof Error ? error.message : "Request failed." }, 500);
   }

@@ -1,22 +1,6 @@
-import postgres from "postgres";
+import { asJson, database as db, result as one } from "./db";
 
-// Connects as the `game_api` role, which may only execute the game.* functions
-// defined in supabase/migrations. Transaction-mode pooling: no prepared statements.
-let client: postgres.Sql | null = null;
-
-const db = () => {
-  if (client) return client;
-  const url = process.env.GAME_DATABASE_URL ?? globalThis.Netlify?.env.get("GAME_DATABASE_URL");
-  if (!url) throw new GameConfigError("GAME_DATABASE_URL is not set");
-  // Netlify stops functions after 10 s; slow local networks can raise this via GAME_DB_CONNECT_TIMEOUT.
-  const connectTimeout = Number(process.env.GAME_DB_CONNECT_TIMEOUT ?? 7);
-  client = postgres(url, { ssl: "require", prepare: false, max: 1, idle_timeout: 20, connect_timeout: connectTimeout });
-  return client;
-};
-
-export class GameConfigError extends Error {}
-
-/** Errors raised by the game.* functions (`raise exception '<code>'`). */
+/** Errors raised by the game.* and drip.* functions (`raise exception '<code>'`). */
 export const GAME_ERRORS = new Set([
   "game_disabled",
   "amount_too_small",
@@ -25,6 +9,7 @@ export const GAME_ERRORS = new Set([
   "tx_already_used",
   "insufficient_balance",
   "transfer_not_found",
+  "allocation_taken",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -39,8 +24,6 @@ export type GameState = {
   deposits: { reference: string; requested: number; received: number | null; status: string; txHash: string | null; createdAt: string }[];
   rounds: { id: number; game: string; cost: number; createdAt: string }[];
 };
-
-const one = async <T>(query: Promise<postgres.RowList<postgres.Row[]>>) => (await query)[0]?.result as T;
 
 export const gameDb = {
   state: (wallet: string) => one<GameState>(db()`select game.state(${wallet}) as result`),
@@ -60,7 +43,7 @@ export const gameDb = {
     db()`select game.record_unmatched(${txHash}, ${quantity.toString()}::bigint, ${blockHeight}::bigint)`,
   watcherState: () => one<{ treasuryAddress: string | null; scannedBlockHeight: number }>(db()`select game.watcher_state() as result`),
   setScannedBlockHeight: (treasury: string, height: number) => db()`select game.set_scanned_block_height(${treasury}, ${height}::bigint)`,
-  recordScan: (result: Record<string, unknown>) => db()`select game.record_scan(${db().json(result as postgres.JSONValue)})`,
+  recordScan: (scan: Record<string, unknown>) => db()`select game.record_scan(${asJson(scan)})`,
   startRound: (wallet: string, game: string) =>
     one<{ roundId: number; cost: number; balance: number }>(db()`select game.start_round(${wallet}, ${game}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),

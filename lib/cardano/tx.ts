@@ -290,6 +290,9 @@ const concat = (parts: Uint8Array[]) => {
 export const assembleSignedTx = (body: Uint8Array, witnessSetHex: string, auxiliaryData: Uint8Array | null = null) =>
   concat([new Uint8Array([0x84]), body, hexToBytes(witnessSetHex), new Uint8Array([0xf5]), auxiliaryData ?? new Uint8Array([0xf6])]);
 
+/** Transaction id: blake2b-256 of the body bytes, known before anyone signs. */
+export const transactionHash = (body: Uint8Array) => bytesToHex(blake2b(body, { dkLen: 32 }));
+
 /** CIP-20 transaction message (metadata label 674); wallets and explorers display it. */
 export const cip20Message = (lines: string[]) => {
   for (const line of lines) {
