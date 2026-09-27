@@ -5,7 +5,10 @@ export type Cip30Api = {
   getChangeAddress(): Promise<string>;
   getRewardAddresses(): Promise<string[]>;
   getUsedAddresses(): Promise<string[]>;
+  getUtxos(): Promise<string[] | null | undefined>;
   signData(address: string, payloadHex: string): Promise<{ signature: string; key: string }>;
+  signTx(txHex: string, partialSign?: boolean): Promise<string>;
+  submitTx(txHex: string): Promise<string>;
 };
 
 export type Cip30Provider = {

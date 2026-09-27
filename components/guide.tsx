@@ -6,6 +6,7 @@ import { CopyButton } from "./copy-button";
 import { useLiveData } from "./data/live-data";
 import { ArrowRight, ArrowUpRight, Check } from "./icons";
 import { Reveal } from "./motion";
+import { DelegateButton } from "./wallet/delegation";
 
 const BENEFITS = [
   ["Self-custody", "ADA never leaves your wallet"],
@@ -133,9 +134,9 @@ export function Guide() {
                 ))}
               </ol>
               <div className="flex flex-wrap gap-3 pt-2">
-                <a className="btn btn-gold" href={LINKS.delegateSpo}>
+                <DelegateButton target="pool" className="btn btn-gold">
                   Delegate to 300 SPO <ArrowRight size={16} />
-                </a>
+                </DelegateButton>
                 <a className="btn btn-ghost" href={LINKS.wallet}>
                   Open 300 Wallet
                 </a>
@@ -196,9 +197,9 @@ export function Guide() {
                     </div>
                   ))}
                 </div>
-                <a className="btn btn-gold" href={LINKS.delegateDrep}>
+                <DelegateButton target="drep" className="btn btn-gold">
                   Delegate to 300 DRep <ArrowRight size={16} />
-                </a>
+                </DelegateButton>
               </GuideSection>
             </div>
           </article>
@@ -275,9 +276,9 @@ function ProtocolCard() {
           </div>
         ))}
       </dl>
-      <a className="btn btn-gold mt-5 w-full" href={LINKS.delegateSpo}>
+      <DelegateButton target="pool" className="btn btn-gold mt-5 w-full">
         Stake with 300 <ArrowRight size={16} />
-      </a>
+      </DelegateButton>
     </article>
   );
 }

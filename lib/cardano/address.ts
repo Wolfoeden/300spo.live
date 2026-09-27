@@ -46,5 +46,36 @@ export const ownerKeyHash = (bytes: Uint8Array): Uint8Array | null => {
   return bytes.slice(1, 29);
 };
 
-export const shortenAddress = (address: string, head = 10, tail = 6) =>
+/** Stake-pool id (bech32 `pool1…` or hex) → 28-byte pool key hash. */
+export const poolKeyHash = (poolId: string): Uint8Array => {
+  if (/^[0-9a-f]{56}$/i.test(poolId)) return hexToBytes(poolId);
+  const { prefix, words } = bech32.decode(poolId as `${string}1${string}`, false);
+  if (prefix !== "pool") throw new Error(`Not a pool id: ${poolId}`);
+  return bech32.fromWords(words);
+};
+
+export type DrepCredential = { kind: "key" | "script"; hash: Uint8Array };
+
+/**
+ * DRep id → credential. Accepts CIP-129 ids (29 bytes, header 0x22 key /
+ * 0x23 script) and legacy CIP-105 ids (`drep1…` key hash, `drep_script1…`).
+ */
+export const drepCredential = (drepId: string): DrepCredential => {
+  const { prefix, words } = bech32.decode(drepId as `${string}1${string}`, false);
+  const bytes = bech32.fromWords(words);
+  if (prefix === "drep_script" && bytes.length === 28) return { kind: "script", hash: bytes };
+  if (prefix !== "drep") throw new Error(`Not a DRep id: ${drepId}`);
+  if (bytes.length === 28) return { kind: "key", hash: bytes };
+  if (bytes.length === 29 && (bytes[0] === 0x22 || bytes[0] === 0x23)) {
+    return { kind: bytes[0] === 0x22 ? "key" : "script", hash: bytes.slice(1) };
+  }
+  throw new Error(`Unsupported DRep id: ${drepId}`);
+};
+
+export const stakeKeyHash = (rewardAddress: Uint8Array): Uint8Array | null =>
+  addressType(rewardAddress) === REWARD_KEY_TYPE && rewardAddress.length === 29 ? rewardAddress.slice(1) : null;
+
+export const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((byte, index) => byte === b[index]);
+
+export const shortenAddress =(address: string, head = 10, tail = 6) =>
   address.length <= head + tail + 1 ? address : `${address.slice(0, head)}…${address.slice(-tail)}`;

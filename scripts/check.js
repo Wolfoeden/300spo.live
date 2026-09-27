@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 
 // Runs after `next build`: out/ is what Netlify publishes.
 const required = [
@@ -102,6 +102,25 @@ if (existsSync(walletBuildIndex)) {
   if (manifest.schemaVersion !== 1 || manifest.basePath !== "/wallet-app") {
     console.error("Integrated wallet build manifest has an unexpected schemaVersion or basePath");
     process.exit(1);
+  }
+
+  // Every asset URL baked into the wallet bundle must exist and sit on a path
+  // Netlify actually uploads (no node_modules or dot-directories).
+  const bundleDirectory = "public/wallet-app/_expo/static/js/web";
+  for (const bundle of readdirSync(bundleDirectory).filter((name) => name.endsWith(".js"))) {
+    const code = readFileSync(`${bundleDirectory}/${bundle}`, "utf8");
+    const assetUrls = [...new Set([...code.matchAll(/"(\/wallet-app\/assets\/[^"]+\.[a-z0-9]{2,5})"/gi)].map((match) => match[1]))];
+    const broken = assetUrls.filter(
+      (url) => /\/(?:node_modules|\.[^/]+)\//.test(url) || !existsSync(`public${decodeURIComponent(url)}`),
+    );
+    if (broken.length) {
+      console.error(`Wallet bundle ${bundle} references assets that would not be served:\n${broken.join("\n")}`);
+      process.exit(1);
+    }
+    if (code.includes("koios.rest")) {
+      console.error(`Wallet bundle ${bundle} calls Koios directly; browsers block that (no CORS). Re-run wallet:web:integrate.`);
+      process.exit(1);
+    }
   }
 
   const appIndex = readFileSync(walletBuildIndex, "utf8");

@@ -1,5 +1,5 @@
-import { cp, lstat, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 
 const projectRoot = resolve(process.cwd());
 const publicRoot = join(projectRoot, "public");
@@ -116,6 +116,69 @@ const validateArtifact = async (source) => {
   return files.length;
 };
 
+// Netlify never uploads node_modules or dot-directories, but Expo places
+// package assets (e.g. the cardano-serialization-lib WASM) under
+// assets/node_modules/.pnpm/... Move them to assets/vendor/ and rewrite
+// the references so they are actually served.
+const UNDEPLOYABLE_SEGMENT = /(^|\/)(?:node_modules|\.[^/]+)(?:\/|$)/;
+const VENDOR_DIRECTORY = "assets/vendor";
+
+const relocateUndeployableAssets = async (root) => {
+  const files = await walk(root);
+  const moves = files.filter(({ pathFromBase }) => UNDEPLOYABLE_SEGMENT.test(posix.dirname(pathFromBase)));
+  if (!moves.length) return 0;
+
+  const targets = new Set();
+  const oldDirectories = new Set();
+  await mkdir(join(root, VENDOR_DIRECTORY), { recursive: true });
+  for (const file of moves) {
+    const target = `${VENDOR_DIRECTORY}/${posix.basename(file.pathFromBase)}`;
+    if (targets.has(target)) fail(`Two wallet assets would both move to ${target}`);
+    targets.add(target);
+    oldDirectories.add(posix.dirname(file.pathFromBase));
+    await rename(file.absolutePath, join(root, target));
+  }
+
+  for (const file of await walk(root)) {
+    if (!/\.(?:js|html|css|json)$/i.test(file.pathFromBase)) continue;
+    const original = await readFile(file.absolutePath, "utf8");
+    let text = original;
+    for (const directory of oldDirectories) text = text.split(`/wallet-app/${directory}/`).join(`/wallet-app/${VENDOR_DIRECTORY}/`);
+    if (text !== original) await writeFile(file.absolutePath, text, "utf8");
+  }
+
+  for (const directory of oldDirectories) {
+    const firstUndeployable = directory.split("/").findIndex((segment) => segment === "node_modules" || segment.startsWith("."));
+    await rm(join(root, ...directory.split("/").slice(0, firstUndeployable + 1)), { recursive: true, force: true });
+  }
+
+  const leftovers = (await walk(root)).filter(({ pathFromBase }) => UNDEPLOYABLE_SEGMENT.test(pathFromBase));
+  if (leftovers.length) fail(`Undeployable wallet paths remain:\n${leftovers.map((file) => file.pathFromBase).join("\n")}`);
+  return moves.length;
+};
+
+// Koios answers without CORS headers, so browsers block the wallet's direct
+// calls. Point the web build at same-origin proxies (see netlify.toml).
+const KOIOS_PROXIES = {
+  "https://preprod.koios.rest/api/v1": "/api/koios/preprod",
+  "https://api.koios.rest/api/v1": "/api/koios/mainnet",
+};
+
+const routeKoiosThroughProxy = async (root) => {
+  let rewritten = 0;
+  for (const file of await walk(root)) {
+    if (!/\.(?:js|html|json)$/i.test(file.pathFromBase)) continue;
+    const original = await readFile(file.absolutePath, "utf8");
+    let text = original;
+    for (const [upstream, proxy] of Object.entries(KOIOS_PROXIES)) text = text.split(upstream).join(proxy);
+    if (text !== original) {
+      await writeFile(file.absolutePath, text, "utf8");
+      rewritten += 1;
+    }
+  }
+  return rewritten;
+};
+
 const integrate = async () => {
   if (!sourceArgument) {
     fail("Usage: pnpm wallet:web:integrate -- <path-to-hotwallet-dist>");
@@ -133,6 +196,10 @@ const integrate = async () => {
 
   try {
     await cp(source, staging, { recursive: true, force: false, errorOnExist: true });
+    const relocated = await relocateUndeployableAssets(staging);
+    if (relocated) console.log(`Moved ${relocated} package assets to /wallet-app/${VENDOR_DIRECTORY}/.`);
+    const proxied = await routeKoiosThroughProxy(staging);
+    if (proxied) console.log(`Routed Koios calls through /api/koios/* in ${proxied} file(s).`);
     await writeFile(join(staging, "build-manifest.json"), `${JSON.stringify({
       schemaVersion: 1,
       name: "300 Wallet Web",

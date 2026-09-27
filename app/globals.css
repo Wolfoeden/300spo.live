@@ -118,6 +118,11 @@
   .btn:active {
     transform: translateY(1px);
   }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+  }
   .btn-gold {
     color: #1a1204;
     background: linear-gradient(180deg, var(--color-gold-bright), var(--color-gold));

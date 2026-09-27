@@ -27,6 +27,20 @@
     Strict-Transport-Security = "max-age=31536000"
     X-Frame-Options = "SAMEORIGIN"
 
+# Koios sends no CORS headers; the 300 Wallet web build calls it through these
+# same-origin proxies (rewritten by scripts/integrate-wallet-web.mjs).
+[[redirects]]
+  from = "/api/koios/preprod/*"
+  to = "https://preprod.koios.rest/api/v1/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/koios/mainnet/*"
+  to = "https://api.koios.rest/api/v1/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "https://www.300spo.live/*"
   to = "https://300spo.live/:splat"

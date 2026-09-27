@@ -1,11 +1,11 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { shortenAddress } from "@/lib/cardano/address";
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { CopyButton } from "../copy-button";
-import { ArrowUpRight, Close, Power, Refresh, Shield, Spinner, WalletIcon } from "../icons";
+import { ArrowUpRight, Power, Refresh, Shield, Spinner, WalletIcon } from "../icons";
+import { Modal } from "../modal";
 import { useWallet } from "./wallet-provider";
 
 const INSTALL_LINKS = [
@@ -20,65 +20,10 @@ const subscribeNever = () => () => {};
 
 export function WalletDialog() {
   const { dialogOpen, closeDialog, status } = useWallet();
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!dialogOpen) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDialog();
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>("button, a")?.focus());
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-      previous?.focus();
-    };
-  }, [dialogOpen, closeDialog]);
-
   return (
-    <AnimatePresence>
-      {dialogOpen && (
-        <motion.div
-          className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <button aria-label="Close wallet dialog" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={closeDialog} />
-          <motion.div
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="wallet-dialog-title"
-            className="relative w-full max-w-md overflow-hidden rounded-t-3xl border border-line-strong bg-panel shadow-2xl shadow-black/60 sm:rounded-3xl"
-            initial={{ y: 40, opacity: 0, scale: 0.98 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 30, opacity: 0, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 380, damping: 32 }}
-          >
-            <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-72 -translate-x-1/2 rounded-full bg-gold/20 blur-3xl" />
-            <div className="relative max-h-[85vh] overflow-y-auto p-5 sm:p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 id="wallet-dialog-title" className="text-lg font-semibold">
-                  {status === "connected" ? "Your wallet" : "Connect a Cardano wallet"}
-                </h2>
-                <button
-                  onClick={closeDialog}
-                  className="grid size-9 place-items-center rounded-full border border-line text-muted transition hover:text-text"
-                  aria-label="Close"
-                >
-                  <Close size={16} />
-                </button>
-              </div>
-              {status === "connected" ? <AccountView /> : <PickerView />}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <Modal open={dialogOpen} onClose={closeDialog} title={status === "connected" ? "Your wallet" : "Connect a Cardano wallet"}>
+      {status === "connected" ? <AccountView /> : <PickerView />}
+    </Modal>
   );
 }
 

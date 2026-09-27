@@ -7,6 +7,7 @@ import { formatInteger, formatPercent } from "@/lib/format";
 import { useLiveData } from "./data/live-data";
 import { ArrowRight } from "./icons";
 import { Reveal } from "./motion";
+import { DelegateButton } from "./wallet/delegation";
 
 const CYCLE_MS = 7000;
 const REWARDS = [170, 170, 340, 170, 170, 340];
@@ -65,9 +66,9 @@ export function BlockArrivals() {
                 <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{value}</p>
               </div>
             ))}
-            <a className="btn btn-gold mt-auto" href={LINKS.delegateSpo}>
+            <DelegateButton target="pool" className="btn btn-gold mt-auto">
               Delegate to 300 SPO <ArrowRight size={16} />
-            </a>
+            </DelegateButton>
           </Reveal>
         </div>
       </div>
