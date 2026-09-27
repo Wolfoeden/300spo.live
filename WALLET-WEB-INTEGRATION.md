@@ -16,6 +16,13 @@ Der Hotwallet-Build muss diese Bedingungen erfüllen:
 - Die Android-Schaltfläche lädt die Preprod-APK von `/downloads/300-wallet-android-preprod.apk`. Die Datei muss vor der Veröffentlichung dort abgelegt werden.
 - `/wallet/manifest.webmanifest` installiert die kostenlose iPhone-Web-App im Standalone-Modus. Dafür ist kein Offline-Service-Worker nötig.
 
+Das Integrationsskript passt den Export an zwei Stellen an, die sonst in Produktion brechen:
+
+- Netlify lädt keine Pfade mit `node_modules` oder Punkt-Ordnern hoch. Expo legt dort Paket-Assets ab, u. a. die WASM-Datei der cardano-serialization-lib. Das Skript verschiebt sie nach `/wallet-app/assets/vendor/` und passt die Verweise im Bundle an.
+- Koios sendet keine CORS-Header, direkte Aufrufe aus dem Browser scheitern. Das Skript ersetzt `https://preprod.koios.rest/api/v1` bzw. `https://api.koios.rest/api/v1` durch die Proxys `/api/koios/preprod` bzw. `/api/koios/mainnet` aus `netlify.toml`.
+
+`scripts/check.js` bricht den Build ab, wenn eines davon im Bundle übrig ist.
+
 ## Lokaler Ablauf
 
 Im Hotwallet-Repository (PowerShell):

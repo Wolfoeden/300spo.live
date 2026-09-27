@@ -117,6 +117,10 @@ if (existsSync(walletBuildIndex)) {
       console.error(`Wallet bundle ${bundle} references assets that would not be served:\n${broken.join("\n")}`);
       process.exit(1);
     }
+    if (code.includes("koios.rest")) {
+      console.error(`Wallet bundle ${bundle} calls Koios directly; browsers block that (no CORS). Re-run wallet:web:integrate.`);
+      process.exit(1);
+    }
   }
 
   const appIndex = readFileSync(walletBuildIndex, "utf8");

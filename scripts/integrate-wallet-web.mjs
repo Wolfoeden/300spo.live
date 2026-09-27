@@ -157,6 +157,28 @@ const relocateUndeployableAssets = async (root) => {
   return moves.length;
 };
 
+// Koios answers without CORS headers, so browsers block the wallet's direct
+// calls. Point the web build at same-origin proxies (see netlify.toml).
+const KOIOS_PROXIES = {
+  "https://preprod.koios.rest/api/v1": "/api/koios/preprod",
+  "https://api.koios.rest/api/v1": "/api/koios/mainnet",
+};
+
+const routeKoiosThroughProxy = async (root) => {
+  let rewritten = 0;
+  for (const file of await walk(root)) {
+    if (!/\.(?:js|html|json)$/i.test(file.pathFromBase)) continue;
+    const original = await readFile(file.absolutePath, "utf8");
+    let text = original;
+    for (const [upstream, proxy] of Object.entries(KOIOS_PROXIES)) text = text.split(upstream).join(proxy);
+    if (text !== original) {
+      await writeFile(file.absolutePath, text, "utf8");
+      rewritten += 1;
+    }
+  }
+  return rewritten;
+};
+
 const integrate = async () => {
   if (!sourceArgument) {
     fail("Usage: pnpm wallet:web:integrate -- <path-to-hotwallet-dist>");
@@ -176,6 +198,8 @@ const integrate = async () => {
     await cp(source, staging, { recursive: true, force: false, errorOnExist: true });
     const relocated = await relocateUndeployableAssets(staging);
     if (relocated) console.log(`Moved ${relocated} package assets to /wallet-app/${VENDOR_DIRECTORY}/.`);
+    const proxied = await routeKoiosThroughProxy(staging);
+    if (proxied) console.log(`Routed Koios calls through /api/koios/* in ${proxied} file(s).`);
     await writeFile(join(staging, "build-manifest.json"), `${JSON.stringify({
       schemaVersion: 1,
       name: "300 Wallet Web",
