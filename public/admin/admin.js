@@ -245,7 +245,14 @@ document.querySelector("#logout").addEventListener("click", async () => {
   message.textContent = "Signed out.";
 });
 request("/api/admin/session")
-  .then((session) => (session.authenticated ? showEditor() : showLogin()))
+  .then((session) => {
+    // The password form only appears while password login is still enabled.
+    document.querySelector("#login-form").hidden = !session.passwordLogin;
+    document.querySelector("#signed-in-as").textContent = session.wallet
+      ? `Signed in with wallet ${session.wallet.slice(0, 14)}…${session.wallet.slice(-6)}`
+      : "";
+    return session.authenticated ? showEditor() : showLogin();
+  })
   .catch((error) => {
     showLogin();
     message.textContent = error.message;

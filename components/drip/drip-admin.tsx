@@ -74,7 +74,7 @@ export function DripAdmin() {
     return (
       <Card title="Sign in first">
         <p className="text-muted">
-          Sign in on the <a className="text-gold underline" href="/admin/">admin page</a>, then come back here.
+          <a className="text-gold underline" href="/admin/login/?next=/admin/drip/">Sign in with the admin wallet</a> to manage the drip.
         </p>
       </Card>
     );

@@ -10,13 +10,15 @@
   <body>
     <main>
       <header>
-        <a href="/" class="brand">300</a><span>Site administration</span>
+        <a href="/" class="brand">300</a><span>Site administration</span><span id="signed-in-as" class="signed-in-as"></span>
       </header>
       <section id="login-panel" class="card" hidden>
         <p class="eyebrow">SECURE ACCESS</p>
         <h1>Welcome back.</h1>
-        <p>Enter the 300 SPO administrator password.</p>
-        <form id="login-form">
+        <p>Sign in with the admin wallet. You sign a free message; nothing is sent.</p>
+        <a class="button-link" href="/admin/login/">Sign in with wallet</a>
+        <form id="login-form" hidden>
+          <p class="hint">Emergency access while password login is still enabled:</p>
           <label
             >Password<input
               id="password"
