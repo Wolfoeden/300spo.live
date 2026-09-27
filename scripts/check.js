@@ -1,8 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
+// Runs after `next build`: out/ is what Netlify publishes.
 const required = [
-  "public/index.html",
+  "out/index.html",
+  "out/404.html",
+  "out/admin/index.html",
+  "out/wallet/index.html",
+  "out/discover/300-cardano-hub/index.html",
+  "out/partners/midnight-logo-white.svg",
+  "out/partners/realfi-logo-white.svg",
+  "netlify/functions/wallet-auth.mts",
+  "public/site.css",
   "public/assets/index-CIJTfFxp.css",
   "public/assets/TradePanel-CTD15WYE.css",
   "public/carpathian-hero.png",
@@ -15,7 +24,6 @@ const required = [
   "public/wallet/icons/icon-512.png",
   "public/wallet/wallet.css",
   "public/wallet/wallet.js",
-  "public/site-content.js",
   "netlify/functions/price.mjs",
   "netlify/functions/metrics.mjs",
   "netlify/functions/news.mjs",
@@ -43,7 +51,7 @@ const requiredWalletMarkers = [
   "Preprod-Testversion",
   "data-wallet-preview-status",
   "data-wallet-frame",
-  "/wallet-app/index.html",
+  "/wallet-app/",
 ];
 const missingMarkers = requiredWalletMarkers.filter((marker) => !walletPage.includes(marker));
 
@@ -67,6 +75,14 @@ if (existsSync(androidBuild) && statSync(androidBuild).size < 1_000_000) {
 const chromeBuild = "public/downloads/300-wallet-chrome-preprod-preview.zip";
 if (existsSync(chromeBuild) && statSync(chromeBuild).size < 1_000_000) {
   console.error("Chrome preview ZIP is unexpectedly small; refusing a likely placeholder artifact");
+  process.exit(1);
+}
+
+const landing = readFileSync("out/index.html", "utf8");
+const requiredLandingMarkers = ["Stake Cardano", "pool1v8gvy6tjp8x8wg5h4jw20p9up04lxgw0l0lgery9mz4h7h9x25n", "Connect", "/admin/", "/wallet/"];
+const missingLanding = requiredLandingMarkers.filter((marker) => !landing.includes(marker));
+if (missingLanding.length) {
+  console.error(`Landing page export is missing:\n${missingLanding.join("\n")}`);
   process.exit(1);
 }
 

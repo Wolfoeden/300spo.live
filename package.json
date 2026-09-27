@@ -1,12 +1,48 @@
 {
-  "name": "300spo-live-public",
+  "name": "300spo-live",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
-    "build": "node scripts/check.js",
+    "dev": "next dev",
+    "dev:api": "tsx scripts/local-server.mjs --api-only",
+    "build": "next build && node scripts/check.js",
+    "preview": "tsx scripts/local-server.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "wallet:web:integrate": "node scripts/integrate-wallet-web.mjs"
   },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@scure/base": "2.4.0",
+    "cborg": "6.1.2",
+    "motion": "13.4.4",
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
   "devDependencies": {
-    "@netlify/functions": "latest"
+    "@netlify/functions": "6.0.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.19.19",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "vite": "8.2.0",
+    "vitest": "4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "rolldown": "1.2.2"
+    }
   }
 }

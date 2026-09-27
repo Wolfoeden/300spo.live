@@ -1,2 +1,11 @@
-# Local Netlify folder
+# Dependencies and build output
+node_modules
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Local Netlify folder and secrets
 .netlify
+.env*
+!.env.example
