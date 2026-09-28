@@ -15,6 +15,7 @@ import {
   runRace,
   type RaceEvent,
 } from "@/lib/game/card-race";
+import { formatTokenAmount } from "@/lib/format";
 import { cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
 
@@ -45,9 +46,13 @@ type Props = {
   picked: number | null;
   onPick(suit: number): void;
   disabled: boolean;
+  /** The picked lane shows a start button while a bet can be placed. */
+  canStart: boolean;
+  bet: number;
+  onStart(): void;
 };
 
-export function CardRaceStage({ preview, result, instant, picked, onPick, disabled }: Props) {
+export function CardRaceStage({ preview, result, instant, picked, onPick, disabled, canStart, bet, onStart }: Props) {
   const reduce = useReducedMotion();
   const events = useMemo(() => (result ? raceEvents(result.race) : []), [result]);
   const [cursor, setCursor] = useState(0);
@@ -169,45 +174,71 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
           const stepBack = lastEvent?.kind === "setback" && lastEvent.suit === suit;
           const cannotWin = odds?.[suit] === 0;
           return (
-            <button
-              key={suit}
-              type="button"
-              onClick={() => onPick(suit)}
-              disabled={disabled || cannotWin}
-              aria-pressed={picked === suit}
-              aria-label={`Pick ${SUITS[suit]}`}
-              className={`relative flex flex-col rounded-xl border transition ${picked === suit ? "border-gold/70" : "enabled:hover:border-gold/30"} ${
-                finished && !winner ? "opacity-50" : ""
-              }`}
-              style={{
-                backgroundColor: tint(suit, picked === suit ? 0.1 : 0.04),
-                borderColor: picked === suit ? undefined : tint(suit, 0.22),
-              }}
-            >
-              {Array.from({ length: FINISH + 1 }, (_, row) => (
-                <span key={row} className={`h-10 ${row === 0 ? "" : "border-t border-white/[0.04]"}`} />
-              ))}
-              <motion.div
-                className="absolute inset-x-0 bottom-0 grid h-10 place-items-center"
-                animate={{ y: -position * 40 }}
-                transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            <div key={suit} className="relative flex">
+              <button
+                type="button"
+                onClick={() => onPick(suit)}
+                disabled={disabled || cannotWin}
+                aria-pressed={picked === suit}
+                aria-label={`Pick ${SUITS[suit]}`}
+                className={`relative flex w-full flex-col rounded-xl border transition ${picked === suit ? "border-gold/70" : "enabled:hover:border-gold/30"} ${
+                  finished && !winner ? "opacity-50" : ""
+                }`}
+                style={{
+                  backgroundColor: tint(suit, picked === suit ? 0.1 : 0.04),
+                  borderColor: picked === suit ? undefined : tint(suit, 0.22),
+                }}
               >
-                <AceCard suit={suit} glow={winner} />
-                <AnimatePresence>
-                  {stepBack && (
-                    <motion.span
-                      key={shown}
-                      className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 font-mono text-[0.65rem] font-bold text-white"
-                      initial={{ opacity: 0, scale: 0.6 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      −1
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            </button>
+                {Array.from({ length: FINISH + 1 }, (_, row) => (
+                  <span key={row} className={`h-10 ${row === 0 ? "" : "border-t border-white/[0.04]"}`} />
+                ))}
+                <motion.div
+                  className="absolute inset-x-0 bottom-0 grid h-10 place-items-center"
+                  animate={{ y: -position * 40 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                >
+                  <AceCard suit={suit} glow={winner} />
+                  <AnimatePresence>
+                    {stepBack && (
+                      <motion.span
+                        key={shown}
+                        className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 font-mono text-[0.65rem] font-bold text-white"
+                        initial={{ opacity: 0, scale: 0.6 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        −1
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </button>
+              {/* Start right in the picked lane: on phones the bet button sits far below the board. */}
+              <AnimatePresence>
+                {picked === suit && canStart && (
+                  <motion.button
+                    type="button"
+                    onClick={onStart}
+                    aria-label={`Start the race: bet ${formatTokenAmount(BigInt(bet))} on ${SUITS[suit]}`}
+                    className="absolute inset-x-0 top-[34%] z-20 mx-auto flex w-fit flex-col items-center"
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 26 }}
+                  >
+                    <span className="relative grid size-11 place-items-center rounded-full bg-[linear-gradient(135deg,#f4d675,#9b6710)] text-[#1a1204] shadow-[0_8px_24px_-6px_rgba(233,180,76,0.9)]">
+                      <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-gold/40 [animation-duration:1.6s]" />
+                      <svg viewBox="0 0 24 24" className="relative ml-0.5 size-5" fill="currentColor" aria-hidden="true">
+                        <path d="M7 4.5v15l13-7.5z" />
+                      </svg>
+                    </span>
+                    <span className="mt-1 rounded-full bg-black/80 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold tabular-nums text-gold-bright">
+                      {formatTokenAmount(BigInt(bet))}
+                    </span>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
           );
         })}
 
