@@ -24,6 +24,7 @@ const sameOrigin = (request: Request) => {
 const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
+  if (action === "race" && request.method === "GET") return json(await gameDb.racePreview(wallet));
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!sameOrigin(request)) return json({ error: "forbidden_origin" }, 403);
   const body = await readBody(request);
@@ -61,6 +62,13 @@ const handle = async (request: Request, action: string, wallet: string) => {
     const choice = Number(body.choice);
     const bet = /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : null;
     if (!GAME_ID.test(game) || bet === null || !Number.isInteger(choice)) return json({ error: "invalid_request" }, 400);
+    if (game === "card-race") {
+      // The race the player saw: its nonce and server seed hash from /api/game/race.
+      const nonce = Number(body.nonce);
+      const serverSeedHash = String(body.serverSeedHash ?? "");
+      if (!Number.isInteger(nonce) || !/^[0-9a-f]{64}$/.test(serverSeedHash)) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.playRace(wallet, bet, choice, nonce, serverSeedHash));
+    }
     return json(await gameDb.play(wallet, game, bet, choice));
   }
 

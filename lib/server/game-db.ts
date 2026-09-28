@@ -15,6 +15,7 @@ export const GAME_ERRORS = new Set([
   "invalid_client_seed",
   "invalid_bet_limits",
   "game_not_found",
+  "race_changed",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -25,7 +26,7 @@ export type GameState = {
   minDeposit: number;
   treasuryAddress: string | null;
   bets: { min: number; max: number; step: number };
-  games: { id: string; name: string; outcomes: number; payoutBps: number; enabled: boolean }[];
+  games: { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean }[];
   balance: number;
   deposits: { reference: string; requested: number; received: number | null; status: string; note: string | null; txHash: string | null; createdAt: string }[];
   rounds: {
@@ -35,12 +36,16 @@ export type GameState = {
     choice: number;
     outcome: number;
     payout: number;
+    oddsBps: number | null;
     nonce: number;
     serverSeedHash: string;
     clientSeed: string;
     createdAt: string;
   }[];
 };
+
+/** The next card race for a wallet: face-up track and odds per suit (♠ ♥ ♦ ♣). */
+export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
 
 export type PlayResult = {
   roundId: number;
@@ -54,6 +59,8 @@ export type PlayResult = {
   nonce: number;
   serverSeedHash: string;
   clientSeed: string;
+  /** Card race only: the track, the cards turned until the finish and the odds shown. */
+  race?: { track: number[]; draws: number[]; odds: number[] };
 };
 
 export type Fairness = {
@@ -85,6 +92,11 @@ export const gameDb = {
   recordScan: (scan: Record<string, unknown>) => db()`select game.record_scan(${asJson(scan)})`,
   play: (wallet: string, game: string, bet: bigint, choice: number) =>
     one<PlayResult>(db()`select game.play(${wallet}, ${game}, ${bet.toString()}::bigint, ${choice}::integer) as result`),
+  racePreview: (wallet: string) => one<RacePreview>(db()`select game.race_preview(${wallet}) as result`),
+  playRace: (wallet: string, bet: bigint, choice: number, nonce: number, serverSeedHash: string) =>
+    one<PlayResult>(
+      db()`select game.play_race(${wallet}, ${bet.toString()}::bigint, ${choice}::integer, ${nonce}::integer, ${serverSeedHash}) as result`,
+    ),
   fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
   rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),

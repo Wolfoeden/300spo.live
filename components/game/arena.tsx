@@ -1,27 +1,46 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { GAME_COPY, HORSES, cosmetic, formatMultiplier, isKnownGame, type GameId } from "@/lib/game/catalog";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GAME_COPY, cosmetic, formatMultiplier, isPlayableGame, type GameId } from "@/lib/game/catalog";
 import { formatTokenAmount } from "@/lib/format";
+import { SUIT_SYMBOLS, isRed } from "@/lib/game/card-race";
 import { Spinner } from "../icons";
+import { CardRaceStage, raceEvents, raceTimeline, type RacePreview } from "./card-race-stage";
 
-export type ArenaGame = { id: string; name: string; outcomes: number; payoutBps: number; enabled: boolean };
-export type PlayResult = { roundId: number; game: string; bet: number; choice: number; outcome: number; win: boolean; payout: number; balance: number };
+export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
+export type PlayResult = {
+  roundId: number;
+  game: string;
+  bet: number;
+  choice: number;
+  outcome: number;
+  win: boolean;
+  payout: number;
+  balance: number;
+  race?: { track: number[]; draws: number[]; odds: number[] };
+};
+export type RaceTicket = { nonce: number; serverSeedHash: string };
 
 type Props = {
   games: ArenaGame[];
   bets: { min: number; max: number; step: number };
   balance: number;
   enabled: boolean;
-  play(game: string, bet: number, choice: number): Promise<PlayResult>;
+  play(game: string, bet: number, choice: number, race?: RaceTicket): Promise<PlayResult>;
+  loadRace(): Promise<RacePreview>;
+  /** Changes when the seed changes, so the race is dealt again. */
+  dealVersion: number;
   onSettled(): void;
 };
 
-const ANIMATION_MS: Record<GameId, number> = { "coin-flip": 1900, "horse-race": 4300, "xerxes-vs-robot": 3600 };
+const ANIMATION_MS: Record<Exclude<GameId, "card-race" | "horse-race">, number> = { "coin-flip": 1900, "xerxes-vs-robot": 3600 };
 
-export function Arena({ games, bets, balance, enabled, play, onSettled }: Props) {
-  const playable = games.filter((game) => game.enabled && isKnownGame(game.id));
+const animationMs = (result: PlayResult) =>
+  result.race ? raceTimeline(raceEvents(result.race)).total : (ANIMATION_MS[result.game as keyof typeof ANIMATION_MS] ?? 2000);
+
+export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersion, onSettled }: Props) {
+  const playable = games.filter((game) => game.enabled && isPlayableGame(game.id));
   const [gameId, setGameId] = useState<GameId>((playable[0]?.id as GameId) ?? "coin-flip");
   const game = playable.find((entry) => entry.id === gameId) ?? playable[0];
   const [bet, setBet] = useState(bets.min);
@@ -29,9 +48,12 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
   const [phase, setPhase] = useState<"idle" | "waiting" | "animating" | "done">("idle");
   const [result, setResult] = useState<PlayResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<RacePreview | null>(null);
+  const [previewKey, setPreviewKey] = useState(0);
   const timer = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
+  const isRace = game?.kind === "race";
 
   const amounts = useMemo(() => {
     const list: number[] = [];
@@ -43,10 +65,37 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
     if (timer.current) window.clearTimeout(timer.current);
   }, []);
 
+  // The next race is dealt by the server; load it whenever the race tab needs a fresh deal.
+  useEffect(() => {
+    if (!isRace) return;
+    let active = true;
+    loadRace().then(
+      (loaded) => active && setPreview(loaded),
+      () => active && setError("Could not deal the next race. Reload the page."),
+    );
+    return () => {
+      active = false;
+    };
+  }, [isRace, loadRace, previewKey, dealVersion]);
+
+  const finish = useCallback(() => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = null;
+    setPhase("done");
+    // A race is followed by a new deal: the player picks again after seeing its track.
+    if (isRace) setChoice(null);
+    setPreviewKey((key) => key + 1);
+    onSettled();
+  }, [isRace, onSettled]);
+
   if (!game) return null;
   const copy = GAME_COPY[game.id as GameId];
   const busy = phase === "waiting" || phase === "animating";
-  const canPlay = enabled && choice !== null && bet <= balance && !busy;
+  const odds = isRace ? (preview?.odds ?? null) : null;
+  const pickOdds = (index: number) => (isRace ? (odds?.[index] ?? 0) : game.payoutBps);
+  const canPlay = enabled && choice !== null && bet <= balance && !busy && (!isRace || (!!preview && pickOdds(choice) > 0));
+  // After a race the board keeps the finished race until the player picks for the next one.
+  const showResult = phase !== "idle";
 
   const switchGame = (id: GameId) => {
     if (busy) return;
@@ -57,27 +106,33 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
     setError(null);
   };
 
+  const pick = (index: number) => {
+    if (busy) return;
+    setChoice(index);
+    if (isRace && phase === "done") setPhase("idle");
+  };
+
   const start = async () => {
     if (choice === null) return;
     setError(null);
     setResult(null);
     setPhase("waiting");
     try {
-      const outcome = await play(game.id, bet, choice);
+      const outcome = await play(game.id, bet, choice, isRace && preview ? { nonce: preview.nonce, serverSeedHash: preview.serverSeedHash } : undefined);
       setResult(outcome);
       setPhase("animating");
       // On phones the stage sits above the controls; bring it into view for the show.
       const box = stage.current?.getBoundingClientRect();
       if (box && (box.top < 0 || box.bottom > window.innerHeight)) stage.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-      timer.current = window.setTimeout(() => {
-        setPhase("done");
-        onSettled();
-      }, reduce ? 200 : ANIMATION_MS[game.id as GameId]);
+      timer.current = window.setTimeout(finish, reduce ? 200 : animationMs(outcome));
     } catch (cause) {
       setPhase("idle");
       setError(cause instanceof Error ? cause.message : "The bet could not be placed.");
+      if (isRace) setPreviewKey((key) => key + 1);
     }
   };
+
+  const multiplier = (index: number) => formatMultiplier(pickOdds(index));
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-line bg-night lg:col-span-2">
@@ -95,41 +150,51 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
               }`}
             >
               {GAME_COPY[entry.id as GameId].title}
-              <span className="ml-2 font-mono text-xs text-faint">{formatMultiplier(entry.payoutBps)}</span>
+              <span className="ml-2 font-mono text-xs text-faint">{entry.kind === "race" ? "odds" : formatMultiplier(entry.payoutBps)}</span>
             </button>
           ))}
         </div>
 
         <div className="grid grid-cols-1 gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <div ref={stage} className="min-h-[18rem]">
-            {game.id === "coin-flip" && <CoinStage result={phase === "idle" ? null : result} />}
-            {game.id === "horse-race" && <RaceStage result={phase === "idle" ? null : result} picked={choice} />}
-            {game.id === "xerxes-vs-robot" && <DuelStage result={phase === "idle" ? null : result} />}
+            {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
+            {game.id === "card-race" && (
+              <CardRaceStage
+                preview={preview}
+                result={showResult && result?.race ? { roundId: result.roundId, outcome: result.outcome, race: result.race } : null}
+                instant={phase === "done"}
+                picked={choice}
+                onPick={pick}
+                disabled={busy}
+              />
+            )}
+            {game.id === "xerxes-vs-robot" && <DuelStage result={showResult ? result : null} />}
           </div>
 
           <div className="flex flex-col gap-5">
             <div>
               <h2 className="text-2xl font-semibold">{copy.title}</h2>
               <p className="mt-1 text-sm text-muted">
-                {copy.tagline} A correct pick pays {formatMultiplier(game.payoutBps)} your bet.
+                {copy.tagline} {isRace ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(game.payoutBps)} your bet.`}
               </p>
             </div>
 
             <fieldset>
               <legend className="mb-2 text-xs text-faint">Your pick</legend>
-              <div className={`grid gap-2 ${copy.choices.length > 2 ? "grid-cols-1" : "grid-cols-2"}`}>
+              <div className="grid grid-cols-2 gap-2">
                 {copy.choices.map((label, index) => (
                   <button
                     key={label}
-                    onClick={() => setChoice(index)}
-                    disabled={busy}
+                    onClick={() => pick(index)}
+                    disabled={busy || (isRace && pickOdds(index) === 0)}
                     aria-pressed={choice === index}
-                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition ${
-                      choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted hover:border-gold/40 hover:text-text"
+                    className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition disabled:opacity-40 ${
+                      choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted enabled:hover:border-gold/40 enabled:hover:text-text"
                     }`}
                   >
-                    {game.id === "horse-race" && <Silk index={index} small />}
-                    {label}
+                    {isRace && <span className={`text-base leading-none ${isRed(index) ? "text-[#ff6b6b]" : "text-text"}`}>{SUIT_SYMBOLS[index]}</span>}
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {isRace && <span className="font-mono text-xs text-gold-bright">{odds ? (pickOdds(index) ? multiplier(index) : "—") : "…"}</span>}
                   </button>
                 ))}
               </div>
@@ -160,8 +225,13 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
                 ? "Pick a winner first"
                 : bet > balance
                   ? "Not enough game balance"
-                  : `Bet ${formatTokenAmount(BigInt(bet))} on ${copy.choices[choice]}`}
+                  : `Bet ${formatTokenAmount(BigInt(bet))} on ${copy.choices[choice]}${isRace && odds ? ` · ${multiplier(choice)}` : ""}`}
             </button>
+            {phase === "animating" && isRace && (
+              <button className="-mt-3 self-center text-xs text-faint underline-offset-4 hover:text-text hover:underline" onClick={finish}>
+                Skip to the finish
+              </button>
+            )}
 
             <AnimatePresence mode="wait">
               {phase === "done" && result && (
@@ -176,9 +246,12 @@ export function Arena({ games, bets, balance, enabled, play, onSettled }: Props)
                     {result.win ? `You won ${formatTokenAmount(BigInt(result.payout))} tokens!` : `${copy.choices[result.outcome]} wins.`}
                   </p>
                   <p className="text-sm text-muted">
-                    {result.win ? `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} paid ${formatMultiplier(game.payoutBps)}.` : `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} is gone.`}{" "}
+                    {result.win
+                      ? `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} paid ${formatMultiplier(result.race ? result.race.odds[result.choice] : game.payoutBps)}.`
+                      : `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} is gone.`}{" "}
                     Balance: {formatTokenAmount(BigInt(result.balance))}.
                   </p>
+                  {isRace && <p className="mt-1 text-xs text-faint">Pick an ace to deal the next race.</p>}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -217,57 +290,6 @@ function CoinStage({ result }: { result: PlayResult | null }) {
           <span className="text-6xl font-black tracking-tight text-[#2a1a03]">300</span>
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- horse race
-
-export function Silk({ index, small }: { index: number; small?: boolean }) {
-  return (
-    <span
-      className={`grid shrink-0 place-items-center rounded-lg font-mono font-bold text-white shadow-inner ${small ? "size-7 text-xs" : "size-9 text-sm"}`}
-      style={{ background: `linear-gradient(135deg, ${HORSES[index].color}, ${HORSES[index].color}99)` }}
-    >
-      {index + 1}
-    </span>
-  );
-}
-
-function RaceStage({ result, picked }: { result: PlayResult | null; picked: number | null }) {
-  const reduce = useReducedMotion();
-  return (
-    <div className="flex h-full flex-col justify-center gap-2 py-2">
-      {HORSES.map((horse, index) => {
-        const winner = result?.outcome === index;
-        // The winner crosses first; the others finish 0.2–1.0 s later. Losers may lead at
-        // half-time and the winner comes from behind (cosmetic, derived from the round id).
-        const duration = result ? (winner ? 3.4 : 3.6 + cosmetic(result.roundId, index) * 0.8) : 0;
-        const halfway = result ? (winner ? 38 + cosmetic(result.roundId, 10) * 10 : 45 + cosmetic(result.roundId, index + 20) * 30) : 0;
-        return (
-          <div key={horse.name} className={`relative h-12 rounded-xl border ${picked === index ? "border-gold/50" : "border-line"} bg-white/[0.02]`}>
-            <div aria-hidden="true" className="absolute inset-y-0 right-10 w-1.5 bg-[repeating-linear-gradient(0deg,#fff_0_6px,#111_6px_12px)] opacity-60" />
-            <span className="pointer-events-none absolute left-14 top-1/2 -translate-y-1/2 text-xs text-faint">{horse.name}</span>
-            {/* The track ends just past the finish line; runners move 0% → 100% of it (same unit, so it animates). */}
-            <div className="absolute inset-y-0 left-2 right-[4.25rem]">
-              <motion.div
-                key={result?.roundId ?? "start"}
-                className="absolute top-1/2 flex -translate-y-1/2 items-center"
-                initial={{ left: "0%" }}
-                animate={{ left: result ? ["0%", `${halfway}%`, "100%"] : "0%" }}
-                transition={{ duration: reduce ? 0 : duration, times: [0, 0.55, 1], ease: ["easeIn", "easeOut"] }}
-              >
-                <motion.span
-                  animate={result ? { y: [0, -3, 0] } : { y: 0 }}
-                  transition={{ duration: 0.35, repeat: result ? Math.round(duration / 0.35) : 0 }}
-                >
-                  <Silk index={index} />
-                </motion.span>
-              </motion.div>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
