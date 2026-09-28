@@ -24,7 +24,11 @@ const sameOrigin = (request: Request) => {
 const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
-  if (action === "race" && request.method === "GET") return json(await gameDb.racePreview(wallet));
+  if (action === "race" && request.method === "GET") {
+    const count = Number(new URL(request.url).searchParams.get("count") ?? 1);
+    if (!Number.isInteger(count) || count < 1 || count > 4) return json({ error: "invalid_request" }, 400);
+    return json(count === 1 ? await gameDb.racePreview(wallet) : await gameDb.racePreviews(wallet, count));
+  }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!sameOrigin(request)) return json({ error: "forbidden_origin" }, 403);
   const body = await readBody(request);
@@ -70,6 +74,23 @@ const handle = async (request: Request, action: string, wallet: string) => {
       return json(await gameDb.playRace(wallet, bet, choice, nonce, serverSeedHash));
     }
     return json(await gameDb.play(wallet, game, bet, choice));
+  }
+
+  if (action === "play-races") {
+    // 4× mode: one pick per deal shown (-1 = skipped), same bet on each.
+    const bet = /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : null;
+    const choices = Array.isArray(body.choices) ? body.choices.map(Number) : [];
+    const nonce = Number(body.nonce);
+    const serverSeedHash = String(body.serverSeedHash ?? "");
+    const valid =
+      bet !== null &&
+      choices.length >= 1 &&
+      choices.length <= 4 &&
+      choices.every((choice) => Number.isInteger(choice) && choice >= -1 && choice <= 3) &&
+      Number.isInteger(nonce) &&
+      /^[0-9a-f]{64}$/.test(serverSeedHash);
+    if (!valid) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.playRaceMulti(wallet, bet, choices, nonce, serverSeedHash));
   }
 
   if (action === "seed") {

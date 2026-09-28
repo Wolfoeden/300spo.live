@@ -28,6 +28,22 @@ export const GAME_COPY: Record<GameId, { title: string; tagline: string; choices
 
 export const isKnownGame = (id: string): id is GameId => id in GAME_COPY;
 
+/** Tiles of the /play lobby. `game` links a live tile to its game; the rest are announced. */
+export type LobbyTile = { slug: string; title: string; tagline: string; badge: string; game?: GameId };
+
+export const LOBBY_LIVE: LobbyTile[] = [
+  { slug: "horse-race", game: "card-race", title: "Horse race", tagline: "Four legendary aces race the deck. Play one race or four at once.", badge: "Up to 100×" },
+  { slug: "coin-flip", game: "coin-flip", title: "Coin flip", tagline: "Xerxes or 300 — call the side.", badge: "2×" },
+];
+
+export const LOBBY_SOON: LobbyTile[] = [
+  { slug: "xerxes-vs-robot", title: "Xerxes vs AI robot", tagline: "The god-king against the machine.", badge: "Coming soon" },
+  { slug: "chicken", title: "Chicken", tagline: "Dare the road, one step at a time.", badge: "Coming soon" },
+  { slug: "dice", title: "Dice", tagline: "Roll the dice, call the number.", badge: "Coming soon" },
+  { slug: "sparta-board", title: "Sparta Board", tagline: "Roll and march around the board.", badge: "Coming soon" },
+  { slug: "wheel", title: "Wheel of 300", tagline: "Spin the wheel of fortune.", badge: "Coming soon" },
+];
+
 export const isPlayableGame = (id: string): id is GameId => isKnownGame(id) && !RETIRED.has(id);
 
 export const choiceLabel = (game: string, index: number) => (isKnownGame(game) ? (GAME_COPY[game].choices[index] ?? `#${index + 1}`) : `#${index + 1}`);

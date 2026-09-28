@@ -70,6 +70,11 @@ What each outcome index means lives in `lib/game/catalog.ts`; the animations
 in `components/game/arena.tsx` only replay the outcome the server returned.
 The retired five-horse `horse-race` stays in the database for old rounds.
 
+`/play` is a lobby of game tiles (live: horse race, coin flip; announced as
+coming soon: Xerxes vs AI robot, Chicken, Dice, Sparta Board, Wheel of 300 —
+`LOBBY_LIVE` / `LOBBY_SOON` in `lib/game/catalog.ts`). The open game lives in
+the URL hash (`#horse-race`, `#horse-race/4`, `#coin-flip`).
+
 **Horse race (cards).** The four aces are the horses. Seven cards from the
 shuffled 48 lie face up as the track; the player sees them and the odds before
 betting (`/api/game/race`). The dealer turns the rest one by one: each card
@@ -80,8 +85,14 @@ capped at 100×, "—" when an ace cannot win), computed over all orders of the
 remaining 41 cards (`lib/game/card-race.ts`) and stored per track pattern in
 `game.race_odds` (`scripts/race-odds.ts` generates it; a test checks the
 table's checksum). A bet names the deal it was placed on (nonce and server seed
-hash), so nobody bets on odds they did not see. Jacks, queens and kings wear
-art from the 300 DEGEN NFT collection (`lib/game/card-art.ts`, `public/cards`).
+hash), so nobody bets on odds they did not see. Every card wears art from the
+300 DEGEN NFT collection on its suit colour (`lib/game/card-art.ts`,
+`public/cards`, built with `scripts/card-art.cjs`).
+
+**4× mode** (like the four games of a "Pharao" machine): `/api/game/race?count=4`
+deals the wallet's next four nonces; `/api/game/play-races` plays the picked
+ones in one transaction (`game.play_race_multi`, same bet each, skipped deals
+use up their nonce without a bet, the whole stake must be covered up front).
 
 **Provably fair.** Every wallet has a secret server seed whose SHA-256 is shown
 in advance, a client seed it can choose, and a nonce counting its bets:

@@ -9,7 +9,7 @@ const BURST_MS = 3200;
 const COINS = 18;
 
 /** Full-stage celebration for a win: gold flash, shock ring, 300 coins flying out and the amount. */
-export function WinBurst({ amount, onDone }: { amount: number; onDone(): void }) {
+export function WinBurst({ amount, onDone, compact = false }: { amount: number; onDone(): void; compact?: boolean }) {
   const reduce = useReducedMotion();
   const [seed] = useState(() => Math.floor(Math.random() * 1000));
 
@@ -35,20 +35,20 @@ export function WinBurst({ amount, onDone }: { amount: number; onDone(): void })
       {!reduce && (
         <>
           <motion.span
-            className="absolute size-40 rounded-full border-4 border-gold-bright"
+            className={`absolute rounded-full border-gold-bright ${compact ? "size-16 border-2" : "size-40 border-4"}`}
             initial={{ scale: 0.2, opacity: 0.9 }}
             animate={{ scale: 3.2, opacity: 0 }}
             transition={{ duration: 1.1, ease: "easeOut" }}
           />
-          {Array.from({ length: COINS }, (_, index) => {
-            const angle = (index / COINS) * Math.PI * 2 + cosmetic(seed, index) * 0.4;
-            const distance = 110 + cosmetic(seed, index + 50) * 90;
+          {Array.from({ length: compact ? COINS / 2 : COINS }, (_, index) => {
+            const angle = (index / (compact ? COINS / 2 : COINS)) * Math.PI * 2 + cosmetic(seed, index) * 0.4;
+            const distance = (compact ? 45 : 110) + cosmetic(seed, index + 50) * (compact ? 40 : 90);
             return (
               <motion.img
                 key={index}
                 src="/300-logo.jpg"
                 alt=""
-                className="absolute size-7 rounded-full shadow-[0_0_12px_rgba(233,180,76,0.8)] ring-1 ring-gold-bright/70"
+                className={`absolute rounded-full shadow-[0_0_12px_rgba(233,180,76,0.8)] ring-1 ring-gold-bright/70 ${compact ? "size-4" : "size-7"}`}
                 initial={{ x: 0, y: 0, scale: 0.3, opacity: 1, rotate: 0 }}
                 animate={{
                   x: Math.cos(angle) * distance,
@@ -69,11 +69,15 @@ export function WinBurst({ amount, onDone }: { amount: number; onDone(): void })
         animate={{ scale: [0.3, 1.18, 1], opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <p className="font-mono text-xs uppercase tracking-[0.35em] text-gold-bright">You won</p>
-        <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight drop-shadow-[0_4px_24px_rgba(233,180,76,0.6)] sm:text-6xl">
+        <p className={`font-mono uppercase text-gold-bright ${compact ? "text-[0.55rem] tracking-[0.2em]" : "text-xs tracking-[0.35em]"}`}>You won</p>
+        <p
+          className={`mt-1 font-bold tabular-nums tracking-tight drop-shadow-[0_4px_24px_rgba(233,180,76,0.6)] ${
+            compact ? "text-xl sm:text-3xl" : "text-5xl sm:text-6xl"
+          }`}
+        >
           <span className="text-gold-gradient">+{formatTokenAmount(BigInt(amount))}</span>
         </p>
-        <p className="mt-1 text-sm font-semibold text-text">300 tokens</p>
+        {!compact && <p className="mt-1 text-sm font-semibold text-text">300 tokens</p>}
       </motion.div>
     </motion.div>
   );
