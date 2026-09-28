@@ -16,7 +16,7 @@ import {
   type RaceEvent,
 } from "@/lib/game/card-race";
 import { formatTokenAmount } from "@/lib/format";
-import { cardArt } from "@/lib/game/card-art";
+import { aceArt, cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
 
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
@@ -65,6 +65,7 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
   // Warm the browser cache with all 48 card images so turned cards never show up blank.
   useEffect(() => {
     for (let card = 0; card < DECK_SIZE; card += 1) new Image().src = cardArt(cardSuit(card), cardRank(card)).src;
+    for (let suit = 0; suit < 4; suit += 1) new Image().src = aceArt(suit).src;
   }, []);
 
   useEffect(() => {
@@ -290,20 +291,21 @@ export function FaceCard({ card, sideways, dim }: { card: number; sideways?: boo
   );
 }
 
+/** The racehorse: a legendary degen on its suit colour in a gold ace frame. */
 function AceCard({ suit, glow }: { suit: number; glow: boolean }) {
+  const art = aceArt(suit);
   return (
     <span
-      className={`relative flex h-9 w-7 flex-col items-center justify-center rounded-md border-2 shadow-lg sm:w-8 ${
-        glow ? "shadow-[0_0_24px_rgba(233,180,76,0.85)]" : "shadow-black/50"
+      className={`relative block h-[2.35rem] w-8 overflow-hidden rounded-md border-2 border-gold-bright sm:w-9 ${
+        glow ? "shadow-[0_0_26px_rgba(233,180,76,0.95)]" : "shadow-lg shadow-black/60"
       }`}
-      style={{
-        borderColor: glow ? "#f3cf73" : SUIT_COLORS[suit],
-        background: `linear-gradient(160deg, ${tint(suit, 0.35)}, #0f0e0c 75%)`,
-      }}
+      style={{ outline: `1.5px solid ${SUIT_COLORS[suit]}`, outlineOffset: "1px" }}
     >
-      <span className="absolute left-1 top-0.5 text-[0.55rem] font-bold leading-none text-gold-bright">A</span>
-      <span className="text-lg leading-none" style={{ color: SUIT_COLORS[suit] }}>
-        {SUIT_SYMBOLS[suit]}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover object-top" />
+      <span className="absolute left-0 top-0 flex items-center gap-px rounded-br bg-black/80 px-0.5 text-[0.55rem] font-bold leading-none">
+        <span className="text-gold-bright">A</span>
+        <span style={{ color: SUIT_COLORS[suit] }}>{SUIT_SYMBOLS[suit]}</span>
       </span>
     </span>
   );
