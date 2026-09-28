@@ -2,13 +2,22 @@
 // to one or two requests per function invocation.
 const KOIOS = "https://api.koios.rest/api/v1";
 
+const RATE_LIMIT_RETRY_MS = 1500;
+
 export const koios = async <T>(path: string, body?: unknown, timeoutMs = 8500): Promise<T> => {
-  const response = await fetch(`${KOIOS}/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const request = () =>
+    fetch(`${KOIOS}/${path}`, {
+      method: body ? "POST" : "GET",
+      headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  let response = await request();
+  // The public tier rate-limits shared Netlify IPs now and then; one pause usually clears it.
+  if (response.status === 429) {
+    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
+    response = await request();
+  }
   if (!response.ok) throw new Error(`Koios ${path} returned ${response.status}`);
   return (await response.json()) as T;
 };

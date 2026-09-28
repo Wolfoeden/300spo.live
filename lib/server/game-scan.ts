@@ -1,4 +1,4 @@
-import { REQUIRED_CONFIRMATIONS, analyseTreasuryTx, confirmations, type KoiosTx } from "../game/treasury";
+import { REQUIRED_CONFIRMATIONS, analyseTreasuryTx, confirmations, depositReference, type KoiosTx } from "../game/treasury";
 import { gameDb } from "./game-db";
 import { koios, tipHeight, txInfo } from "./koios";
 
@@ -18,6 +18,9 @@ const settle = async (txs: KoiosTx[], treasury: string, tip: number, outcome: Sc
     const transfer = analyseTreasuryTx(tx, treasury);
     if (transfer.kind === "ignored") {
       outcome.ignored += 1;
+      // The treasury wallet paying itself moved nothing; close its deposit with the reason.
+      const reference = transfer.reason === "outgoing" ? depositReference(tx.metadata) : null;
+      if (reference) await gameDb.rejectDeposit(reference, tx.tx_hash, "treasury_wallet");
       continue;
     }
     const result = transfer.reference
