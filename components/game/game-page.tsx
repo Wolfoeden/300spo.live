@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { addressBytesFromWallet, bytesToHex } from "@/lib/cardano/address";
 import { assembleSignedTx, buildTransaction, ttlFromNow, minAdaForOutput, parseUtxo, type ProtocolParams, type TxOutput, type Utxo } from "@/lib/cardano/tx";
 import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
-import { GAME_COPY, isKnownGame } from "@/lib/game/catalog";
+import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
@@ -15,6 +15,9 @@ import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import type { RacePreview } from "./card-race-stage";
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
+import { ModeSwitch } from "./game-frame";
+import { Lobby } from "./lobby";
+import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
 const POLL_MS = 20_000;
@@ -67,8 +70,11 @@ const API_ERRORS: Record<string, string> = {
 const loadFairness = () => api<Fairness>("/api/game/fairness");
 const rotateSeed = (clientSeed: string | null) => api<Fairness>("/api/game/seed", clientSeed ? { clientSeed } : {});
 const loadRace = () => api<RacePreview>("/api/game/race");
+const loadRaces = (count: number) => api<RaceDeals>(`/api/game/race?count=${count}`);
 const placeBet = (game: string, bet: number, choice: number, race?: RaceTicket) =>
   api<PlayResult>("/api/game/play", { game, bet: String(bet), choice, ...race });
+const placeRaces = (bet: number, choices: number[], ticket: RaceTicket) =>
+  api<MultiRaceResult>("/api/game/play-races", { bet: String(bet), choices, ...ticket });
 
 class ApiError extends Error {}
 
@@ -85,8 +91,26 @@ const api = async <T,>(path: string, body?: unknown): Promise<T> => {
   return data as T;
 };
 
+// The lobby and the open game live in the URL hash (#horse-race, #horse-race/4,
+// #coin-flip), so links work and the back button returns to the lobby.
+const subscribeHash = (callback: () => void) => {
+  window.addEventListener("hashchange", callback);
+  return () => window.removeEventListener("hashchange", callback);
+};
+const useHashRoute = () => useSyncExternalStore(subscribeHash, () => window.location.hash.slice(1), () => "");
+
+const goTo = (route: string) => {
+  if (route) window.location.hash = route;
+  else {
+    window.history.pushState(null, "", window.location.pathname + window.location.search);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }
+  document.getElementById("games")?.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
 export function GamePage() {
   const { status, wallet, balance, auth, openDialog, signIn } = useWallet();
+  const route = useHashRoute();
   const [state, setState] = useState<GameState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const signedIn = auth.status === "signed-in";
@@ -122,72 +146,183 @@ export function GamePage() {
     return () => window.clearInterval(timer);
   }, [pendingKey, refresh]);
 
+  const [slug, variant] = route.split("/");
+  const tile = LOBBY_LIVE.find((entry) => entry.slug === slug);
+  const quad = slug === "horse-race" && variant === "4";
+
+  // What stands between the player and the open game, if anything.
+  const gate =
+    status !== "connected" || !wallet ? (
+      <Gate
+        icon={<WalletIcon className="text-gold" />}
+        title="Connect your wallet"
+        text="Your game balance belongs to the wallet you connect."
+        action={
+          <button className="btn btn-gold" onClick={() => openDialog(() => undefined)} disabled={status === "connecting" || status === "detecting"}>
+            Connect wallet
+          </button>
+        }
+      />
+    ) : wallet.networkId !== 1 ? (
+      <Gate icon={<Shield className="text-warning" />} title="Switch to mainnet" text="The 300 token and the game run on Cardano mainnet." />
+    ) : !signedIn ? (
+      <Gate
+        icon={<Shield className="text-gold" />}
+        title="Verify your wallet"
+        text="Sign a free message so the game knows this balance is yours. No transaction, no fees."
+        action={
+          <button className="btn btn-gold" onClick={signIn} disabled={auth.status === "signing"}>
+            {auth.status === "signing" ? <Spinner size={16} /> : null}
+            {auth.status === "signing" ? "Check your wallet…" : "Verify wallet"}
+          </button>
+        }
+        error={auth.error}
+      />
+    ) : !state ? (
+      <Gate icon={<Spinner className="text-gold" />} title="Loading your game balance…" text={loadError ?? ""} />
+    ) : null;
+
+  const game = state && tile?.game ? state.games.find((entry) => entry.id === tile.game) : undefined;
+  const common = state && {
+    bets: state.bets,
+    balance: state.balance,
+    enabled: state.enabled,
+    dealVersion,
+    onSettled: settle,
+    onBack: () => goTo(""),
+  };
+
   return (
-    <div className="container-site pb-24 pt-28 sm:pt-32">
-      <div className="max-w-2xl">
-        <p className="kicker">300 game</p>
-        <h1 className="mt-4 text-4xl font-semibold leading-[1.02] tracking-[-0.03em] sm:text-6xl">
-          Play with <span className="text-gold-gradient">300.</span>
-        </h1>
-        <p className="mt-5 text-lg text-muted">
-          Coin flip, horse race, Xerxes against the machine. Pick the winner and bet{" "}
-          {state ? `${formatTokenAmount(BigInt(state.bets.min))} to ${formatTokenAmount(BigInt(state.bets.max))}` : "300 to 3,000"} from your
-          game credit — a correct pick pays out in game credit. Game credit cannot be withdrawn.
-        </p>
+    <div className="relative">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[26rem] overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/300-hero.jpg" alt="" className="size-full object-cover opacity-[0.12] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+        <div className="absolute -top-40 right-[-10%] h-[30rem] w-[30rem] rounded-full bg-gold/[0.12] blur-[120px]" />
       </div>
 
-      <div className="mt-12">
-        {status !== "connected" || !wallet ? (
-          <Gate
-            icon={<WalletIcon className="text-gold" />}
-            title="Connect your wallet"
-            text="Your game balance belongs to the wallet you connect."
-            action={
-              <button className="btn btn-gold" onClick={() => openDialog(() => undefined)} disabled={status === "connecting" || status === "detecting"}>
-                Connect wallet
-              </button>
-            }
+      <div className="container-site relative pb-24 pt-24 sm:pt-28">
+        <header className="flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <p className="kicker">300 Games</p>
+            <h1 className="mt-3 text-4xl font-semibold leading-[1.02] tracking-[-0.03em] sm:text-5xl">
+              Play with <span className="text-gold-gradient">300.</span>{" "}
+              <InfoBubble label="How the 300 games work">
+                <span className="block">
+                  Deposit 300 tokens as game credit, pick a winner and bet{" "}
+                  {state ? `${formatTokenAmount(BigInt(state.bets.min))} to ${formatTokenAmount(BigInt(state.bets.max))}` : "300 to 3,000"}. A correct
+                  pick pays out in game credit.
+                </span>
+                <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
+              </InfoBubble>
+            </h1>
+          </div>
+          <AccountBar
+            gated={!!gate}
+            balance={state?.balance ?? null}
+            onConnect={() => openDialog(() => undefined)}
+            onVerify={signIn}
+            signing={auth.status === "signing"}
+            connected={status === "connected" && !!wallet}
           />
-        ) : wallet.networkId !== 1 ? (
-          <Gate icon={<Shield className="text-warning" />} title="Switch to mainnet" text="The 300 token and the game run on Cardano mainnet." />
-        ) : !signedIn ? (
-          <Gate
-            icon={<Shield className="text-gold" />}
-            title="Verify your wallet"
-            text="Sign a free message so the game knows this balance is yours. No transaction, no fees."
-            action={
-              <button className="btn btn-gold" onClick={signIn} disabled={auth.status === "signing"}>
-                {auth.status === "signing" ? <Spinner size={16} /> : null}
-                {auth.status === "signing" ? "Check your wallet…" : "Verify wallet"}
+        </header>
+
+        <div id="games" className="mt-10 scroll-mt-24">
+          {!tile ? (
+            <Lobby onOpen={(target) => goTo(target)} />
+          ) : gate ? (
+            <div className="flex flex-col gap-4">
+              <button type="button" onClick={() => goTo("")} className="self-start text-sm text-muted hover:text-text">
+                ← All games
               </button>
-            }
-            error={auth.error}
-          />
-        ) : !state ? (
-          <Gate icon={<Spinner className="text-gold" />} title="Loading your game balance…" text={loadError ?? ""} />
-        ) : (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
+              {gate}
+            </div>
+          ) : !game?.enabled || !common ? (
+            <Gate icon={<Shield className="text-warning" />} title={`${tile.title} is paused`} text="This game is switched off right now. Try another one." />
+          ) : quad ? (
+            <QuadRace
+              key="quad"
+              game={game}
+              {...common}
+              loadRaces={loadRaces}
+              playRaces={placeRaces}
+              toolbar={<ModeSwitch quad onChange={(value) => goTo(value ? "horse-race/4" : "horse-race")} />}
+            />
+          ) : (
             <Arena
-              games={state.games}
-              bets={state.bets}
-              balance={state.balance}
-              enabled={state.enabled}
+              key={game.id}
+              game={game}
+              {...common}
               play={placeBet}
               loadRace={loadRace}
-              dealVersion={dealVersion}
-              onSettled={settle}
+              toolbar={
+                game.kind === "race" ? <ModeSwitch quad={false} onChange={(value) => goTo(value ? "horse-race/4" : "horse-race")} /> : undefined
+              }
             />
-            <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
-            <DepositCard state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />
-            <History state={state} />
-            <FairnessSection state={state} onRotated={() => setDealVersion((version) => version + 1)} />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="mt-5">
-        <DripCard />
+        {state && !gate && (
+          <section id="account" aria-labelledby="account-title" className="mt-14 scroll-mt-24">
+            <h2 id="account-title" className="kicker">
+              Your game account
+            </h2>
+            <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
+              <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
+              <DepositCard state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />
+              <History state={state} />
+              <FairnessSection state={state} onRotated={() => setDealVersion((version) => version + 1)} />
+            </div>
+          </section>
+        )}
+
+        <div className="mt-5">
+          <DripCard />
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** Top-right of /play: connect or verify, or the game balance with a deposit shortcut. */
+function AccountBar({
+  gated,
+  balance,
+  connected,
+  signing,
+  onConnect,
+  onVerify,
+}: {
+  gated: boolean;
+  balance: number | null;
+  connected: boolean;
+  signing: boolean;
+  onConnect(): void;
+  onVerify(): void;
+}) {
+  if (gated || balance === null) {
+    return connected ? (
+      <button className="btn btn-gold" onClick={onVerify} disabled={signing}>
+        {signing && <Spinner size={16} />}
+        {signing ? "Check your wallet…" : "Verify wallet to play"}
+      </button>
+    ) : (
+      <button className="btn btn-gold" onClick={onConnect}>
+        <WalletIcon /> Connect wallet
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-gold/25 bg-gradient-to-br from-gold/[0.1] to-transparent py-2 pl-4 pr-2">
+      <div>
+        <p className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-faint">Game balance</p>
+        <p className="text-xl font-semibold tabular-nums">
+          {formatTokenAmount(BigInt(balance))} <span className="text-gold-gradient text-sm font-bold">300</span>
+        </p>
+        <p className="text-[0.62rem] text-faint">Game credit only · no withdrawals</p>
+      </div>
+      <a href="#deposit" className="btn btn-ghost !px-4 !py-2 text-sm">
+        Deposit
+      </a>
     </div>
   );
 }
@@ -300,7 +435,7 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
   const quickAmounts = [state.minDeposit, 3_000, 30_000, 300_000].filter((value, index, all) => all.indexOf(value) === index && value >= state.minDeposit);
 
   return (
-    <section className="glass rounded-3xl p-6 sm:p-8">
+    <section id="deposit" className="glass scroll-mt-24 rounded-3xl p-6 sm:p-8">
       <h2 className="flex items-center gap-2 text-xl font-semibold">
         Deposit 300 tokens
         <InfoBubble label="How deposits work">

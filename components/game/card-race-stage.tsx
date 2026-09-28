@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DECK_SIZE,
   FINISH,
@@ -20,6 +20,7 @@ import { aceArt, cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
 
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
+export type RaceDeal = { track: number[]; odds: number[] };
 export type RaceResult = { roundId: number; outcome: number; race: { track: number[]; draws: number[]; odds: number[] } };
 
 /** Cards that stay visible after the current one before they drop off. */
@@ -28,6 +29,8 @@ const DRAW_MS = 300;
 const SETBACK_MS = 700;
 const START_MS = 450;
 const END_MS = 700;
+/** Row height of the full-size board; the compact board scales with its width. */
+const FULL_ROW = 40;
 
 /** When each race event plays (ms after the race starts) and how long the whole race takes. */
 export const raceTimeline = (events: RaceEvent[]) => {
@@ -39,20 +42,22 @@ export const raceTimeline = (events: RaceEvent[]) => {
 export const raceEvents = (race: RaceResult["race"]) => runRace([...race.track, ...race.draws]).events;
 
 type Props = {
-  preview: RacePreview | null;
+  deal: RaceDeal | null;
   result: RaceResult | null;
   /** Jump straight to the finish (skip or reduced motion). */
   instant: boolean;
   picked: number | null;
   onPick(suit: number): void;
   disabled: boolean;
-  /** The picked lane shows a start button while a bet can be placed. */
-  canStart: boolean;
-  bet: number;
-  onStart(): void;
+  /** The picked lane shows a start button while a bet can be placed (single race only). */
+  canStart?: boolean;
+  bet?: number;
+  onStart?(): void;
+  /** Small board for the 4× grid: no card carousel, rows scale with the width. */
+  compact?: boolean;
 };
 
-export function CardRaceStage({ preview, result, instant, picked, onPick, disabled, canStart, bet, onStart }: Props) {
+export function CardRaceStage({ deal, result, instant, picked, onPick, disabled, canStart = false, bet = 0, onStart, compact = false }: Props) {
   const reduce = useReducedMotion();
   const events = useMemo(() => (result ? raceEvents(result.race) : []), [result]);
   const [cursor, setCursor] = useState(0);
@@ -62,7 +67,19 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
     setCursor(0);
   }
 
-  // Warm the browser cache with all 48 card images so turned cards never show up blank.
+  // Compact boards size their rows from their own width.
+  const board = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState(24);
+  useEffect(() => {
+    if (!compact || !board.current) return;
+    const observer = new ResizeObserver(([entry]) => setMeasured(Math.min(34, Math.max(18, Math.round(entry.contentRect.width / 9)))));
+    observer.observe(board.current);
+    return () => observer.disconnect();
+  }, [compact]);
+  const row = compact ? measured : FULL_ROW;
+  const tiny = row < 26;
+
+  // Warm the browser cache with all card images so turned cards never show up blank.
   useEffect(() => {
     for (let card = 0; card < DECK_SIZE; card += 1) new Image().src = cardArt(cardSuit(card), cardRank(card)).src;
     for (let suit = 0; suit < 4; suit += 1) new Image().src = aceArt(suit).src;
@@ -76,8 +93,8 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
   }, [result, events, instant, reduce]);
 
   const shown = result && (instant || reduce) ? events.length : cursor;
-  const track = result?.race.track ?? preview?.track ?? null;
-  const odds = result?.race.odds ?? preview?.odds ?? null;
+  const track = result?.race.track ?? deal?.track ?? null;
+  const odds = result?.race.odds ?? deal?.odds ?? null;
   const positions = positionsAfter(events, shown);
   const played = events.slice(0, shown);
   const draws = played.filter((event): event is Extract<RaceEvent, { kind: "draw" }> => event.kind === "draw");
@@ -90,83 +107,108 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
   const finished = !!result && shown === events.length;
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <div className="relative h-20 w-14 shrink-0">
-          <CardBack className="absolute inset-0 translate-x-1 translate-y-1 opacity-50" />
-          <CardBack className="absolute inset-0" />
-        </div>
-        <div className="relative z-10 h-20 w-14 shrink-0 [perspective:600px]">
-          <AnimatePresence mode="popLayout">
-            {lastDraw ? (
-              <motion.div
-                key={lastDraw.card}
-                className="absolute inset-0"
-                initial={{ rotateY: 180, x: -68, opacity: 0.6 }}
-                animate={{ rotateY: 0, x: 0, opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.22 }}
-              >
-                <FaceCard card={lastDraw.card} />
-              </motion.div>
-            ) : (
-              <div className="absolute inset-0 rounded-md border border-dashed border-line" />
-            )}
-          </AnimatePresence>
-        </div>
-        <div className="-my-2 flex min-w-0 items-center overflow-hidden py-2 pr-2" aria-hidden="true">
-          <AnimatePresence initial={false}>
-            {trail.map((event, index) => (
-              <motion.div
-                key={event.card}
-                layout
-                className="relative -ml-5 h-14 w-10 shrink-0 first:ml-0"
-                style={{ zIndex: TRAIL - index }}
-                initial={{ opacity: 0, x: -28, scale: 1.15 }}
-                animate={{ opacity: 1 - index * 0.17, x: 0, scale: 1 - index * 0.07, rotate: index * 3 }}
-                exit={{ opacity: 0, x: 18, scale: 0.6, rotate: 12 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <FaceCard card={event.card} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      </div>
-      <p className="min-h-4 text-xs text-muted" aria-live="polite">
-        {!result
-          ? ""
-          : finished
-            ? `${SUITS[result.outcome]} crosses the line after ${drawn} cards.`
-            : lastEvent?.kind === "setback"
-              ? `All aces reached card ${lastEvent.row}: ${SUITS[lastEvent.suit]} steps back.`
-              : lastDraw
-                ? `Card ${drawn}: ${SUITS[lastDraw.suit]} moves up`
-                : "Shuffling…"}
-      </p>
-
-      <div className="grid grid-cols-[3.5rem_repeat(4,minmax(0,1fr))] gap-x-1.5 sm:gap-x-2">
-        {/* Track column: finish flag on top, the seven cards below, the gate at the bottom. */}
-        <div className="flex flex-col">
-          <div className="grid h-10 place-items-center">
-            <span className="h-3 w-full rounded-sm bg-[repeating-conic-gradient(#e9b44c_0_25%,#0b0b0c_0_50%)] bg-[length:8px_8px]" />
+    <div className={`flex h-full flex-col ${compact ? "gap-1.5" : "gap-3"}`}>
+      {!compact && (
+        <>
+          <div className="flex items-center gap-3">
+            <div className="relative h-20 w-14 shrink-0">
+              <CardBack className="absolute inset-0 translate-x-1 translate-y-1 opacity-50" />
+              <CardBack className="absolute inset-0" />
+            </div>
+            <div className="relative z-10 h-20 w-14 shrink-0 [perspective:600px]">
+              <AnimatePresence mode="popLayout">
+                {lastDraw ? (
+                  <motion.div
+                    key={lastDraw.card}
+                    className="absolute inset-0"
+                    initial={{ rotateY: 180, x: -68, opacity: 0.6 }}
+                    animate={{ rotateY: 0, x: 0, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.22 }}
+                  >
+                    <FaceCard card={lastDraw.card} />
+                  </motion.div>
+                ) : (
+                  <div className="absolute inset-0 rounded-md border border-dashed border-line" />
+                )}
+              </AnimatePresence>
+            </div>
+            <div className="-my-2 flex min-w-0 items-center overflow-hidden py-2 pr-2" aria-hidden="true">
+              <AnimatePresence initial={false}>
+                {trail.map((event, index) => (
+                  <motion.div
+                    key={event.card}
+                    layout
+                    className="relative -ml-5 h-14 w-10 shrink-0 first:ml-0"
+                    style={{ zIndex: TRAIL - index }}
+                    initial={{ opacity: 0, x: -28, scale: 1.15 }}
+                    animate={{ opacity: 1 - index * 0.17, x: 0, scale: 1 - index * 0.07, rotate: index * 3 }}
+                    exit={{ opacity: 0, x: 18, scale: 0.6, rotate: 12 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <FaceCard card={event.card} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
           </div>
-          {Array.from({ length: TRACK_LENGTH }, (_, index) => TRACK_LENGTH - index).map((row) => (
-            <div key={row} className="grid h-10 place-items-center">
+          <p className="min-h-4 text-xs text-muted" aria-live="polite">
+            {!result
+              ? ""
+              : finished
+                ? `${SUITS[result.outcome]} crosses the line after ${drawn} cards.`
+                : lastEvent?.kind === "setback"
+                  ? `All aces reached card ${lastEvent.row}: ${SUITS[lastEvent.suit]} steps back.`
+                  : lastDraw
+                    ? `Card ${drawn}: ${SUITS[lastDraw.suit]} moves up`
+                    : "Shuffling…"}
+          </p>
+        </>
+      )}
+
+      <div
+        ref={board}
+        className="grid"
+        style={{ gridTemplateColumns: `${compact ? Math.round(row * 1.3) : 56}px repeat(4, minmax(0, 1fr))`, columnGap: compact ? 3 : 8 }}
+      >
+        {/* Track column: finish flag on top, the seven cards below, the gate (or the turned card) at the bottom. */}
+        <div className="flex flex-col">
+          <div className="grid place-items-center" style={{ height: row }}>
+            <span
+              className="w-full rounded-sm bg-[repeating-conic-gradient(#e9b44c_0_25%,#0b0b0c_0_50%)]"
+              style={{ height: Math.max(6, row * 0.3), backgroundSize: `${Math.max(4, row / 5)}px ${Math.max(4, row / 5)}px` }}
+            />
+          </div>
+          {Array.from({ length: TRACK_LENGTH }, (_, index) => TRACK_LENGTH - index).map((level) => (
+            <div key={level} className="grid place-items-center" style={{ height: row }}>
               {track ? (
                 <motion.div
-                  animate={row <= reached ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+                  animate={level <= reached ? { scale: [1, 1.12, 1] } : { scale: 1 }}
                   transition={{ duration: 0.4 }}
-                  className={`rounded-md ${row <= reached ? "ring-2 ring-gold/70" : ""}`}
+                  className={`rounded-md ${level <= reached ? "ring-2 ring-gold/70" : ""}`}
                 >
-                  <FaceCard card={track[row - 1]} sideways dim={row <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === row)} />
+                  {compact ? (
+                    <MiniCard card={track[level - 1]} row={row} dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
+                  ) : (
+                    <FaceCard card={track[level - 1]} sideways dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
+                  )}
                 </motion.div>
               ) : (
-                <span className="h-8 w-12 rounded-md bg-white/[0.04]" />
+                <span className="rounded-md bg-white/[0.04]" style={{ height: row * 0.8, width: row * 1.2 }} />
               )}
             </div>
           ))}
-          <div className="grid h-10 place-items-center font-mono text-[0.6rem] uppercase tracking-[0.14em] text-faint">Gate</div>
+          <div className="grid place-items-center" style={{ height: row }}>
+            {compact && lastDraw ? (
+              <motion.div key={lastDraw.card} initial={{ rotateY: 90 }} animate={{ rotateY: 0 }} transition={{ duration: 0.18 }}>
+                <MiniCard card={lastDraw.card} row={row} upright />
+              </motion.div>
+            ) : (
+              <span className="font-mono uppercase tracking-[0.14em] text-faint" style={{ fontSize: Math.max(8, row * 0.24) }}>
+                Gate
+              </span>
+            )}
+          </div>
         </div>
 
         {[0, 1, 2, 3].map((suit) => {
@@ -182,28 +224,31 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
                 disabled={disabled || cannotWin}
                 aria-pressed={picked === suit}
                 aria-label={`Pick ${SUITS[suit]}`}
-                className={`relative flex w-full flex-col rounded-xl border transition ${picked === suit ? "border-gold/70" : "enabled:hover:border-gold/30"} ${
-                  finished && !winner ? "opacity-50" : ""
-                }`}
+                className={`relative flex w-full flex-col border transition ${compact ? "rounded-lg" : "rounded-xl"} ${
+                  picked === suit ? "border-gold/80" : "enabled:hover:border-gold/30"
+                } ${finished && !winner ? "opacity-50" : ""}`}
                 style={{
-                  backgroundColor: tint(suit, picked === suit ? 0.1 : 0.04),
+                  backgroundColor: tint(suit, picked === suit ? 0.14 : 0.04),
                   borderColor: picked === suit ? undefined : tint(suit, 0.22),
+                  boxShadow: picked === suit && compact ? "0 0 0 1px rgba(243, 207, 115, 0.5)" : undefined,
                 }}
               >
-                {Array.from({ length: FINISH + 1 }, (_, row) => (
-                  <span key={row} className={`h-10 ${row === 0 ? "" : "border-t border-white/[0.04]"}`} />
+                {Array.from({ length: FINISH + 1 }, (_, level) => (
+                  <span key={level} className={level === 0 ? "" : "border-t border-white/[0.04]"} style={{ height: row }} />
                 ))}
                 <motion.div
-                  className="absolute inset-x-0 bottom-0 grid h-10 place-items-center"
-                  animate={{ y: -position * 40 }}
+                  className="absolute inset-x-0 bottom-0 grid place-items-center"
+                  style={{ height: row }}
+                  animate={{ y: -position * row }}
                   transition={{ type: "spring", stiffness: 420, damping: 30 }}
                 >
-                  <AceCard suit={suit} glow={winner} />
+                  {tiny ? <AceChip suit={suit} row={row} glow={winner} /> : <AceCard suit={suit} glow={winner} row={row} />}
                   <AnimatePresence>
                     {stepBack && (
                       <motion.span
                         key={shown}
-                        className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 font-mono text-[0.65rem] font-bold text-white"
+                        className="absolute -right-1 -top-1 rounded-full bg-danger px-1 font-mono font-bold text-white"
+                        style={{ fontSize: Math.max(8, row * 0.26) }}
                         initial={{ opacity: 0, scale: 0.6 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0 }}
@@ -216,7 +261,7 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
               </button>
               {/* Start right in the picked lane: on phones the bet button sits far below the board. */}
               <AnimatePresence>
-                {picked === suit && canStart && (
+                {picked === suit && canStart && onStart && (
                   <motion.button
                     type="button"
                     onClick={onStart}
@@ -247,10 +292,13 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
         {[0, 1, 2, 3].map((suit) => (
           <p
             key={suit}
-            className="mt-2 whitespace-nowrap text-center font-mono text-[0.62rem] tabular-nums sm:text-xs"
-            style={{ color: odds?.[suit] === 0 ? "var(--color-faint)" : SUIT_COLORS[suit] }}
+            className={`whitespace-nowrap text-center font-mono tabular-nums ${compact ? "mt-1" : "mt-2 text-[0.62rem] sm:text-xs"}`}
+            style={{
+              color: odds?.[suit] === 0 ? "var(--color-faint)" : SUIT_COLORS[suit],
+              fontSize: compact ? Math.max(8.5, Math.min(12, row * 0.36)) : undefined,
+            }}
           >
-            {!odds ? "…" : odds[suit] === 0 ? "—" : formatMultiplier(odds[suit])}
+            {!odds ? "…" : odds[suit] === 0 ? "—" : compact ? shortOdds(odds[suit]) : formatMultiplier(odds[suit])}
           </p>
         ))}
       </div>
@@ -258,8 +306,14 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
   );
 }
 
+/** Odds for narrow lanes: whole numbers from 10×, one decimal below (the exact value is in the race header). */
+const shortOdds = (bps: number) => {
+  const value = bps / 10000;
+  return value >= 10 ? String(Math.floor(value)) : String(Math.floor(value * 10) / 10);
+};
+
 /** A suit colour with transparency, for borders and tints. */
-const tint = (suit: number, alpha: number) => {
+export const tint = (suit: number, alpha: number) => {
   const hex = SUIT_COLORS[suit];
   const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
@@ -291,15 +345,37 @@ export function FaceCard({ card, sideways, dim }: { card: number; sideways?: boo
   );
 }
 
+/** Small boards: the card as a suit-coloured tile with rank and symbol (art would be unreadable). */
+function MiniCard({ card, row, dim, upright }: { card: number; row: number; dim?: boolean; upright?: boolean }) {
+  const suit = cardSuit(card);
+  const [width, height] = upright ? [row * 0.72, row * 0.92] : [row * 1.18, row * 0.78];
+  return (
+    <span
+      className={`flex items-center justify-center gap-px rounded font-semibold leading-none text-white shadow-sm shadow-black/40 ${dim ? "opacity-40" : ""}`}
+      style={{
+        width,
+        height,
+        fontSize: Math.max(8, row * 0.36),
+        background: `linear-gradient(160deg, ${tint(suit, 0.95)}, ${tint(suit, 0.55)})`,
+        border: `1px solid ${tint(suit, 1)}`,
+        flexDirection: upright ? "column" : "row",
+      }}
+    >
+      <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">{cardRank(card)}</span>
+      <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">{SUIT_SYMBOLS[suit]}</span>
+    </span>
+  );
+}
+
 /** The racehorse: a legendary degen on its suit colour in a gold ace frame. */
-function AceCard({ suit, glow }: { suit: number; glow: boolean }) {
+function AceCard({ suit, glow, row }: { suit: number; glow: boolean; row: number }) {
   const art = aceArt(suit);
   return (
     <span
-      className={`relative block h-[2.35rem] w-8 overflow-hidden rounded-md border-2 border-gold-bright sm:w-9 ${
+      className={`relative block overflow-hidden rounded-md border-2 border-gold-bright ${
         glow ? "shadow-[0_0_26px_rgba(233,180,76,0.95)]" : "shadow-lg shadow-black/60"
       }`}
-      style={{ outline: `1.5px solid ${SUIT_COLORS[suit]}`, outlineOffset: "1px" }}
+      style={{ height: row * 0.94, width: row * 0.8, outline: `1.5px solid ${SUIT_COLORS[suit]}`, outlineOffset: "1px" }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover object-top" />
@@ -307,6 +383,18 @@ function AceCard({ suit, glow }: { suit: number; glow: boolean }) {
         <span className="text-gold-bright">A</span>
         <span style={{ color: SUIT_COLORS[suit] }}>{SUIT_SYMBOLS[suit]}</span>
       </span>
+    </span>
+  );
+}
+
+/** The ace on tiny boards: gold-rimmed chip in the suit colour. */
+function AceChip({ suit, row, glow }: { suit: number; row: number; glow: boolean }) {
+  return (
+    <span
+      className={`grid place-items-center rounded-md border border-gold-bright font-bold leading-none text-white ${glow ? "shadow-[0_0_16px_rgba(233,180,76,0.95)]" : ""}`}
+      style={{ height: row * 0.86, width: row * 0.86, fontSize: Math.max(9, row * 0.5), background: `linear-gradient(160deg, ${tint(suit, 1)}, ${tint(suit, 0.5)})` }}
+    >
+      {SUIT_SYMBOLS[suit]}
     </span>
   );
 }

@@ -16,6 +16,7 @@ export const GAME_ERRORS = new Set([
   "invalid_bet_limits",
   "game_not_found",
   "race_changed",
+  "invalid_request",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -46,6 +47,12 @@ export type GameState = {
 
 /** The next card race for a wallet: face-up track and odds per suit (♠ ♥ ♦ ♣). */
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
+
+/** The next few races at once (4× mode); deal i uses nonce `nonce + i`. */
+export type RacePreviews = { nonce: number; serverSeedHash: string; deals: { track: number[]; odds: number[] }[] };
+
+/** Result of a 4× round: one entry per deal, null where the player skipped it. */
+export type MultiRaceResult = { results: (PlayResult | null)[]; balance: number; serverSeedHash: string; clientSeed: string };
 
 export type PlayResult = {
   roundId: number;
@@ -93,6 +100,11 @@ export const gameDb = {
   play: (wallet: string, game: string, bet: bigint, choice: number) =>
     one<PlayResult>(db()`select game.play(${wallet}, ${game}, ${bet.toString()}::bigint, ${choice}::integer) as result`),
   racePreview: (wallet: string) => one<RacePreview>(db()`select game.race_preview(${wallet}) as result`),
+  racePreviews: (wallet: string, count: number) => one<RacePreviews>(db()`select game.race_previews(${wallet}, ${count}::integer) as result`),
+  playRaceMulti: (wallet: string, bet: bigint, choices: number[], nonce: number, serverSeedHash: string) =>
+    one<MultiRaceResult>(
+      db()`select game.play_race_multi(${wallet}, ${bet.toString()}::bigint, ${choices}::integer[], ${nonce}::integer, ${serverSeedHash}) as result`,
+    ),
   playRace: (wallet: string, bet: bigint, choice: number, nonce: number, serverSeedHash: string) =>
     one<PlayResult>(
       db()`select game.play_race(${wallet}, ${bet.toString()}::bigint, ${choice}::integer, ${nonce}::integer, ${serverSeedHash}) as result`,

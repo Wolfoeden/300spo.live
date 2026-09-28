@@ -2,14 +2,13 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GAME_COPY, cosmetic, formatMultiplier, isPlayableGame, type GameId } from "@/lib/game/catalog";
+import { GAME_COPY, cosmetic, formatMultiplier, type GameId } from "@/lib/game/catalog";
 import { formatTokenAmount } from "@/lib/format";
 import { SUIT_COLORS, SUIT_SYMBOLS } from "@/lib/game/card-race";
-import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { Spinner } from "../icons";
-import { InfoBubble } from "../info-bubble";
-import { BalanceChip, WinBurst } from "./arena-effects";
+import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RacePreview } from "./card-race-stage";
+import { BetChips, GameFrame } from "./game-frame";
 
 export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
 export type PlayResult = {
@@ -26,7 +25,7 @@ export type PlayResult = {
 export type RaceTicket = { nonce: number; serverSeedHash: string };
 
 type Props = {
-  games: ArenaGame[];
+  game: ArenaGame;
   bets: { min: number; max: number; step: number };
   balance: number;
   enabled: boolean;
@@ -35,17 +34,17 @@ type Props = {
   /** Changes when the seed changes, so the race is dealt again. */
   dealVersion: number;
   onSettled(): void;
+  onBack(): void;
+  /** Extra controls in the game header (the 1×/4× switch of the horse race). */
+  toolbar?: React.ReactNode;
 };
 
-const ANIMATION_MS: Record<Exclude<GameId, "card-race" | "horse-race">, number> = { "coin-flip": 1900, "xerxes-vs-robot": 3600 };
+const ANIMATION_MS: Partial<Record<GameId, number>> = { "coin-flip": 1900, "xerxes-vs-robot": 3600 };
 
-const animationMs = (result: PlayResult) =>
-  result.race ? raceTimeline(raceEvents(result.race)).total : (ANIMATION_MS[result.game as keyof typeof ANIMATION_MS] ?? 2000);
+const animationMs = (result: PlayResult) => (result.race ? raceTimeline(raceEvents(result.race)).total : (ANIMATION_MS[result.game as GameId] ?? 2000));
 
-export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersion, onSettled }: Props) {
-  const playable = games.filter((game) => game.enabled && isPlayableGame(game.id));
-  const [gameId, setGameId] = useState<GameId>((playable[0]?.id as GameId) ?? "coin-flip");
-  const game = playable.find((entry) => entry.id === gameId) ?? playable[0];
+/** One game at a time: its stage on the left, pick, bet and result on the right. */
+export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersion, onSettled, onBack, toolbar }: Props) {
   const [bet, setBet] = useState(bets.min);
   const [choice, setChoice] = useState<number | null>(null);
   const [phase, setPhase] = useState<"idle" | "waiting" | "animating" | "done">("idle");
@@ -57,13 +56,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const timer = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const isRace = game?.kind === "race";
-
-  const amounts = useMemo(() => {
-    const list: number[] = [];
-    for (let amount = bets.min; amount <= bets.max; amount += bets.step) list.push(amount);
-    return list;
-  }, [bets]);
+  const isRace = game.kind === "race";
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -96,7 +89,6 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
     [isRace, onSettled],
   );
 
-  if (!game) return null;
   const copy = GAME_COPY[game.id as GameId];
   const busy = phase === "waiting" || phase === "animating";
   const odds = isRace ? (preview?.odds ?? null) : null;
@@ -106,15 +98,6 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const showResult = phase !== "idle";
   // The in-game balance drops by the bet at once and shows the payout only when the round has played out.
   const shownBalance = busy ? balance - bet : phase === "done" && result ? result.balance : balance;
-
-  const switchGame = (id: GameId) => {
-    if (busy) return;
-    setGameId(id);
-    setChoice(null);
-    setResult(null);
-    setPhase("idle");
-    setError(null);
-  };
 
   const pick = (index: number) => {
     if (busy) return;
@@ -147,36 +130,14 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const multiplier = (index: number) => formatMultiplier(pickOdds(index));
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-line bg-night lg:col-span-2">
-      <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-50" />
-      <div className="relative">
-        <div className="flex items-center gap-2 border-b border-line p-2">
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" role="tablist" aria-label="Games">
-            {playable.map((entry) => (
-              <button
-                key={entry.id}
-                role="tab"
-                aria-selected={entry.id === game.id}
-                onClick={() => switchGame(entry.id as GameId)}
-                className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
-                  entry.id === game.id ? "bg-gold/15 text-gold-bright" : "text-muted hover:bg-white/5 hover:text-text"
-                }`}
-              >
-                {GAME_COPY[entry.id as GameId].title}
-                <span className="ml-2 font-mono text-xs text-faint">{entry.kind === "race" ? "odds" : formatMultiplier(entry.payoutBps)}</span>
-              </button>
-            ))}
-          </div>
-          <BalanceChip value={shownBalance} />
-        </div>
-
+    <GameFrame gameId={game.id as GameId} payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} toolbar={toolbar}>
         <div className="grid grid-cols-1 gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <div ref={stage} className="relative min-h-[18rem]">
             <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
             {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
             {game.id === "card-race" && (
               <CardRaceStage
-                preview={preview}
+                deal={preview}
                 result={showResult && result?.race ? { roundId: result.roundId, outcome: result.outcome, race: result.race } : null}
                 instant={phase === "done"}
                 picked={choice}
@@ -191,24 +152,6 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
           </div>
 
           <div className="flex flex-col gap-5">
-            <h2 className="flex items-center gap-2 text-2xl font-semibold">
-              {copy.title}
-              <InfoBubble label={`How ${copy.title} works`}>
-                <span className="block">{copy.tagline}</span>
-                <span className="mt-2 block">
-                  {isRace ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(game.payoutBps)} your bet.`}
-                </span>
-                {isRace && (
-                  <span className="mt-2 block text-xs text-faint">
-                    Card art:{" "}
-                    <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
-                      300 DEGEN NFTs
-                    </a>
-                  </span>
-                )}
-              </InfoBubble>
-            </h2>
-
             <fieldset>
               <legend className="mb-2 text-xs text-faint">Your pick</legend>
               <div className="grid grid-cols-2 gap-2">
@@ -236,21 +179,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
 
             <fieldset>
               <legend className="mb-2 text-xs text-faint">Bet (tokens)</legend>
-              <div className="flex flex-wrap gap-2">
-                {amounts.map((amount) => (
-                  <button
-                    key={amount}
-                    onClick={() => setBet(amount)}
-                    disabled={busy || amount > balance}
-                    aria-pressed={bet === amount}
-                    className={`rounded-full border px-3 py-1.5 text-xs tabular-nums transition disabled:opacity-40 ${
-                      bet === amount ? "border-gold bg-gold/15 text-gold-bright" : "border-line text-muted hover:border-gold/40"
-                    }`}
-                  >
-                    {formatTokenAmount(BigInt(amount))}
-                  </button>
-                ))}
-              </div>
+              <BetChips bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount <= balance} />
             </fieldset>
 
             <button className="btn btn-gold w-full" onClick={start} disabled={!canPlay}>
@@ -293,8 +222,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
             {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
           </div>
         </div>
-      </div>
-    </section>
+    </GameFrame>
   );
 }
 
@@ -420,7 +348,7 @@ function Fighter({
   );
 }
 
-function RobotFace() {
+export function RobotFace() {
   return (
     <svg viewBox="0 0 120 120" className="size-full rounded-full bg-[radial-gradient(circle_at_40%_30%,#2b3440,#0d1117)]" aria-hidden="true">
       <line x1="60" y1="14" x2="60" y2="30" stroke="#8fd3ff" strokeWidth="3" />
