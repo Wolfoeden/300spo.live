@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { cardArt } from "../lib/game/card-art";
 import {
   DECK_SIZE,
   FINISH,
   allPatterns,
+  cardRank,
   cardSuit,
   oddsBps,
   patternOdds,
@@ -67,6 +71,15 @@ describe("card race deck", () => {
       { kind: "draw", card: 36, suit: 3 },
       { kind: "setback", row: 1, suit: 1 },
     ]);
+  });
+});
+
+describe("card art", () => {
+  it("gives every card its own 300 DEGEN image that ships with the site", () => {
+    const sources = Array.from({ length: DECK_SIZE }, (_, card) => cardArt(cardSuit(card), cardRank(card)).src);
+    expect(new Set(sources).size).toBe(DECK_SIZE);
+    for (const src of sources) expect(existsSync(join(process.cwd(), "public", src))).toBe(true);
+    expect(cardArt(0, "K")).toMatchObject({ alt: "DEGEN #001 Leonidas", face: true });
   });
 });
 

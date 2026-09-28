@@ -2,13 +2,27 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { FINISH, SUIT_SYMBOLS, SUITS, TRACK_LENGTH, cardRank, cardSuit, isRed, positionsAfter, runRace, type RaceEvent } from "@/lib/game/card-race";
-import { DEGEN_COLLECTION_URL, faceArt } from "@/lib/game/card-art";
+import {
+  DECK_SIZE,
+  FINISH,
+  SUIT_COLORS,
+  SUIT_SYMBOLS,
+  SUITS,
+  TRACK_LENGTH,
+  cardRank,
+  cardSuit,
+  positionsAfter,
+  runRace,
+  type RaceEvent,
+} from "@/lib/game/card-race";
+import { cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
 
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
 export type RaceResult = { roundId: number; outcome: number; race: { track: number[]; draws: number[]; odds: number[] } };
 
+/** Cards that stay visible after the current one before they drop off. */
+const TRAIL = 5;
 const DRAW_MS = 300;
 const SETBACK_MS = 700;
 const START_MS = 450;
@@ -43,6 +57,11 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
     setCursor(0);
   }
 
+  // Warm the browser cache with all 48 card images so turned cards never show up blank.
+  useEffect(() => {
+    for (let card = 0; card < DECK_SIZE; card += 1) new Image().src = cardArt(cardSuit(card), cardRank(card)).src;
+  }, []);
+
   useEffect(() => {
     if (!result || instant || reduce) return;
     const { at } = raceTimeline(events);
@@ -55,24 +74,27 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
   const odds = result?.race.odds ?? preview?.odds ?? null;
   const positions = positionsAfter(events, shown);
   const played = events.slice(0, shown);
-  const lastDraw = [...played].reverse().find((event): event is Extract<RaceEvent, { kind: "draw" }> => event.kind === "draw") ?? null;
-  const drawn = played.filter((event) => event.kind === "draw").length;
+  const draws = played.filter((event): event is Extract<RaceEvent, { kind: "draw" }> => event.kind === "draw");
+  const lastDraw = draws[draws.length - 1] ?? null;
+  // The five cards turned before the current one, newest first; older ones drop off the end.
+  const trail = draws.slice(-(TRAIL + 1), -1).reverse();
+  const drawn = draws.length;
   const reached = played.filter((event) => event.kind === "setback").length;
   const lastEvent = played[played.length - 1];
   const finished = !!result && shown === events.length;
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-3">
       <div className="flex items-center gap-3">
         <div className="relative h-20 w-14 shrink-0">
           <CardBack className="absolute inset-0 translate-x-1 translate-y-1 opacity-50" />
           <CardBack className="absolute inset-0" />
         </div>
-        <div className="relative h-20 w-14 shrink-0 [perspective:600px]">
+        <div className="relative z-10 h-20 w-14 shrink-0 [perspective:600px]">
           <AnimatePresence mode="popLayout">
             {lastDraw ? (
               <motion.div
-                key={drawn}
+                key={lastDraw.card}
                 className="absolute inset-0"
                 initial={{ rotateY: 180, x: -68, opacity: 0.6 }}
                 animate={{ rotateY: 0, x: 0, opacity: 1 }}
@@ -86,16 +108,36 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
             )}
           </AnimatePresence>
         </div>
-        <p className="min-w-0 text-xs text-muted">
-          {!result
-            ? "Seven cards mark the track. Each turned card moves its ace one step."
-            : finished
-              ? `${SUITS[result.outcome]} crosses the line after ${drawn} cards.`
-              : lastEvent?.kind === "setback"
-                ? `All aces reached card ${lastEvent.row}: ${SUITS[lastEvent.suit]} steps back.`
-                : `Card ${drawn}${lastDraw ? `: ${SUITS[lastDraw.suit]} moves up` : ""}`}
-        </p>
+        <div className="-my-2 flex min-w-0 items-center overflow-hidden py-2 pr-2" aria-hidden="true">
+          <AnimatePresence initial={false}>
+            {trail.map((event, index) => (
+              <motion.div
+                key={event.card}
+                layout
+                className="relative -ml-5 h-14 w-10 shrink-0 first:ml-0"
+                style={{ zIndex: TRAIL - index }}
+                initial={{ opacity: 0, x: -28, scale: 1.15 }}
+                animate={{ opacity: 1 - index * 0.17, x: 0, scale: 1 - index * 0.07, rotate: index * 3 }}
+                exit={{ opacity: 0, x: 18, scale: 0.6, rotate: 12 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <FaceCard card={event.card} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
+      <p className="min-h-4 text-xs text-muted" aria-live="polite">
+        {!result
+          ? ""
+          : finished
+            ? `${SUITS[result.outcome]} crosses the line after ${drawn} cards.`
+            : lastEvent?.kind === "setback"
+              ? `All aces reached card ${lastEvent.row}: ${SUITS[lastEvent.suit]} steps back.`
+              : lastDraw
+                ? `Card ${drawn}: ${SUITS[lastDraw.suit]} moves up`
+                : "Shuffling…"}
+      </p>
 
       <div className="grid grid-cols-[3.5rem_repeat(4,minmax(0,1fr))] gap-x-1.5 sm:gap-x-2">
         {/* Track column: finish flag on top, the seven cards below, the gate at the bottom. */}
@@ -134,9 +176,13 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
               disabled={disabled || cannotWin}
               aria-pressed={picked === suit}
               aria-label={`Pick ${SUITS[suit]}`}
-              className={`relative flex flex-col rounded-xl border transition ${
-                picked === suit ? "border-gold/60 bg-gold/[0.06]" : "border-line bg-white/[0.015] enabled:hover:border-gold/30"
-              } ${finished && !winner ? "opacity-50" : ""}`}
+              className={`relative flex flex-col rounded-xl border transition ${picked === suit ? "border-gold/70" : "enabled:hover:border-gold/30"} ${
+                finished && !winner ? "opacity-50" : ""
+              }`}
+              style={{
+                backgroundColor: tint(suit, picked === suit ? 0.1 : 0.04),
+                borderColor: picked === suit ? undefined : tint(suit, 0.22),
+              }}
             >
               {Array.from({ length: FINISH + 1 }, (_, row) => (
                 <span key={row} className={`h-10 ${row === 0 ? "" : "border-t border-white/[0.04]"}`} />
@@ -167,50 +213,48 @@ export function CardRaceStage({ preview, result, instant, picked, onPick, disabl
 
         <span />
         {[0, 1, 2, 3].map((suit) => (
-          <p key={suit} className={`mt-2 text-center font-mono text-xs tabular-nums ${odds?.[suit] === 0 ? "text-faint" : "text-gold-bright"}`}>
+          <p
+            key={suit}
+            className="mt-2 whitespace-nowrap text-center font-mono text-[0.62rem] tabular-nums sm:text-xs"
+            style={{ color: odds?.[suit] === 0 ? "var(--color-faint)" : SUIT_COLORS[suit] }}
+          >
             {!odds ? "…" : odds[suit] === 0 ? "—" : formatMultiplier(odds[suit])}
           </p>
         ))}
       </div>
-      <p className="text-[0.7rem] text-faint">
-        Jacks, queens and kings:{" "}
-        <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-muted underline-offset-2 hover:text-text hover:underline">
-          300 DEGEN NFTs
-        </a>
-      </p>
     </div>
   );
 }
 
-function suitColor(suit: number) {
-  return isRed(suit) ? "text-[#ff6b6b]" : "text-text";
-}
+/** A suit colour with transparency, for borders and tints. */
+const tint = (suit: number, alpha: number) => {
+  const hex = SUIT_COLORS[suit];
+  const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
+/** A playing card: 300 DEGEN art on its suit colour, rank and suit in the corner. */
 export function FaceCard({ card, sideways, dim }: { card: number; sideways?: boolean; dim?: boolean }) {
   const suit = cardSuit(card);
   const rank = cardRank(card);
-  const art = faceArt(suit, rank);
+  const art = cardArt(suit, rank);
   return (
     <span
-      className={`relative flex items-center justify-center gap-0.5 overflow-hidden rounded-md border font-semibold shadow-md shadow-black/40 ${
-        art ? "border-gold/60" : "border-white/15 bg-[linear-gradient(160deg,#1d1f24,#101114)]"
-      } ${sideways ? "h-8 w-12 text-[0.7rem]" : "size-full flex-col text-base"} ${dim ? "opacity-40" : ""}`}
+      className={`relative block overflow-hidden rounded-md border bg-panel shadow-md shadow-black/40 ${sideways ? "h-8 w-12" : "size-full"} ${dim ? "opacity-40" : ""}`}
+      style={{ borderColor: tint(suit, art.face ? 0.95 : 0.7) }}
     >
-      {art ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover" />
-          <span className="absolute left-0.5 top-0.5 flex items-center gap-px rounded bg-black/75 px-1 py-px text-[0.6rem] leading-none">
-            {rank}
-            <span className={suitColor(suit)}>{SUIT_SYMBOLS[suit]}</span>
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="leading-none">{rank}</span>
-          <span className={`leading-none ${sideways ? "text-base" : "text-xl"} ${suitColor(suit)}`}>{SUIT_SYMBOLS[suit]}</span>
-        </>
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover" />
+      <span
+        className={`absolute left-0.5 top-0.5 flex items-center gap-0.5 rounded bg-black/80 px-1 font-semibold leading-none ${
+          sideways ? "py-px text-[0.62rem]" : "py-0.5 text-xs"
+        }`}
+      >
+        {rank}
+        <span className={sideways ? "text-[0.7rem]" : "text-sm"} style={{ color: SUIT_COLORS[suit] }}>
+          {SUIT_SYMBOLS[suit]}
+        </span>
+      </span>
     </span>
   );
 }
@@ -218,12 +262,18 @@ export function FaceCard({ card, sideways, dim }: { card: number; sideways?: boo
 function AceCard({ suit, glow }: { suit: number; glow: boolean }) {
   return (
     <span
-      className={`relative flex h-9 w-7 flex-col items-center justify-center rounded-md border bg-[linear-gradient(160deg,#23201a,#0f0e0c)] shadow-lg sm:w-8 ${
-        glow ? "border-gold-bright shadow-[0_0_24px_rgba(233,180,76,0.8)]" : "border-gold/50 shadow-black/50"
+      className={`relative flex h-9 w-7 flex-col items-center justify-center rounded-md border-2 shadow-lg sm:w-8 ${
+        glow ? "shadow-[0_0_24px_rgba(233,180,76,0.85)]" : "shadow-black/50"
       }`}
+      style={{
+        borderColor: glow ? "#f3cf73" : SUIT_COLORS[suit],
+        background: `linear-gradient(160deg, ${tint(suit, 0.35)}, #0f0e0c 75%)`,
+      }}
     >
       <span className="absolute left-1 top-0.5 text-[0.55rem] font-bold leading-none text-gold-bright">A</span>
-      <span className={`text-lg leading-none ${suitColor(suit)}`}>{SUIT_SYMBOLS[suit]}</span>
+      <span className="text-lg leading-none" style={{ color: SUIT_COLORS[suit] }}>
+        {SUIT_SYMBOLS[suit]}
+      </span>
     </span>
   );
 }

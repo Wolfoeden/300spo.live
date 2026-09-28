@@ -10,6 +10,7 @@ import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
+import { InfoBubble } from "../info-bubble";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import type { RacePreview } from "./card-race-stage";
@@ -300,8 +301,13 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
 
   return (
     <section className="glass rounded-3xl p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Deposit 300 tokens</h2>
-      <p className="mt-1 text-sm text-muted">Credited after about 2–4 minutes, once the transfer is 5 blocks deep.</p>
+      <h2 className="flex items-center gap-2 text-xl font-semibold">
+        Deposit 300 tokens
+        <InfoBubble label="How deposits work">
+          Your wallet sends the tokens to the game treasury with a reference. They are credited after about 2–4 minutes, once the transfer is 5
+          blocks deep.
+        </InfoBubble>
+      </h2>
 
       <label className="mt-5 block text-xs text-faint" htmlFor="deposit-amount">
         Amount
