@@ -11,7 +11,8 @@ import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
 import { useWallet } from "../wallet/wallet-provider";
-import { Arena, type ArenaGame, type PlayResult } from "./arena";
+import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
+import type { RacePreview } from "./card-race-stage";
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
@@ -34,7 +35,19 @@ type GameState = {
     txHash: string | null;
     createdAt: string;
   }[];
-  rounds: { id: number; game: string; bet: number; choice: number; outcome: number; payout: number; nonce: number; serverSeedHash: string; clientSeed: string; createdAt: string }[];
+  rounds: {
+    id: number;
+    game: string;
+    bet: number;
+    choice: number;
+    outcome: number;
+    payout: number;
+    oddsBps: number | null;
+    nonce: number;
+    serverSeedHash: string;
+    clientSeed: string;
+    createdAt: string;
+  }[];
 };
 
 const API_ERRORS: Record<string, string> = {
@@ -44,6 +57,7 @@ const API_ERRORS: Record<string, string> = {
   invalid_bet: "That bet is not allowed. Choose one of the listed amounts.",
   invalid_choice: "Pick one of the listed options.",
   invalid_client_seed: "Client seed: 1–64 letters, digits, - or _.",
+  race_changed: "The race was dealt again (another bet or a new seed). Check the new track and odds, then bet.",
   too_many_open_deposits: "Too many unfinished deposits. Let the pending ones confirm first.",
   not_configured: "The game is not configured yet.",
   not_signed_in: "Your wallet session expired. Verify your wallet again.",
@@ -51,7 +65,9 @@ const API_ERRORS: Record<string, string> = {
 
 const loadFairness = () => api<Fairness>("/api/game/fairness");
 const rotateSeed = (clientSeed: string | null) => api<Fairness>("/api/game/seed", clientSeed ? { clientSeed } : {});
-const placeBet = (game: string, bet: number, choice: number) => api<PlayResult>("/api/game/play", { game, bet: String(bet), choice });
+const loadRace = () => api<RacePreview>("/api/game/race");
+const placeBet = (game: string, bet: number, choice: number, race?: RaceTicket) =>
+  api<PlayResult>("/api/game/play", { game, bet: String(bet), choice, ...race });
 
 class ApiError extends Error {}
 
@@ -82,6 +98,9 @@ export function GamePage() {
       setLoadError(error instanceof Error ? error.message : "Could not load the game balance.");
     }
   }, []);
+
+  const settle = useCallback(() => void refresh(), [refresh]);
+  const [dealVersion, setDealVersion] = useState(0);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -147,11 +166,20 @@ export function GamePage() {
           <Gate icon={<Spinner className="text-gold" />} title="Loading your game balance…" text={loadError ?? ""} />
         ) : (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
-            <Arena games={state.games} bets={state.bets} balance={state.balance} enabled={state.enabled} play={placeBet} onSettled={() => void refresh()} />
+            <Arena
+              games={state.games}
+              bets={state.bets}
+              balance={state.balance}
+              enabled={state.enabled}
+              play={placeBet}
+              loadRace={loadRace}
+              dealVersion={dealVersion}
+              onSettled={settle}
+            />
             <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
             <DepositCard state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />
             <History state={state} />
-            <FairnessSection state={state} />
+            <FairnessSection state={state} onRotated={() => setDealVersion((version) => version + 1)} />
           </div>
         )}
       </div>
@@ -393,7 +421,15 @@ function History({ state }: { state: GameState }) {
   );
 }
 
-function FairnessSection({ state }: { state: GameState }) {
+function FairnessSection({ state, onRotated }: { state: GameState; onRotated(): void }) {
   const outcomes = useMemo(() => Object.fromEntries(state.games.map((game) => [game.id, game.outcomes])), [state.games]);
-  return <FairnessCard rounds={state.rounds} outcomes={outcomes} load={loadFairness} rotate={rotateSeed} />;
+  const rotate = useCallback(
+    async (clientSeed: string | null) => {
+      const fairness = await rotateSeed(clientSeed);
+      onRotated();
+      return fairness;
+    },
+    [onRotated],
+  );
+  return <FairnessCard rounds={state.rounds} outcomes={outcomes} load={loadFairness} rotate={rotate} />;
 }

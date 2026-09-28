@@ -58,16 +58,30 @@ treasury towards a player.
    transaction by `game.play()`: the bet is deducted, the outcome drawn and a
    correct pick credited with bet × payout. The balance can never go negative.
 
-| Game | Outcomes | Default payout |
+| Game | Outcomes | Payout |
 | --- | --- | --- |
 | `coin-flip` — Xerxes or 300 | 2 | 2× |
-| `horse-race` — five horses | 5 | 5× |
+| `card-race` — horse race with playing cards | 4 | odds of the dealt track |
 | `xerxes-vs-robot` — Xerxes against the AI robot | 2 | 2× |
 
-The defaults are fair odds (no house edge). Bets run from 300 to 3,000 in
+The fixed payouts are fair odds (no house edge). Bets run from 300 to 3,000 in
 steps of 300. Limits, payouts and per-game switches are set in `/admin/`.
 What each outcome index means lives in `lib/game/catalog.ts`; the animations
 in `components/game/arena.tsx` only replay the outcome the server returned.
+The retired five-horse `horse-race` stays in the database for old rounds.
+
+**Horse race (cards).** The four aces are the horses. Seven cards from the
+shuffled 48 lie face up as the track; the player sees them and the odds before
+betting (`/api/game/race`). The dealer turns the rest one by one: each card
+moves the ace of its suit one step. When every ace has reached track card k,
+the ace of that card's suit steps back once. The first ace to reach step 8
+wins. The odds are the exact fair payout 1/p for each ace (rounded down,
+capped at 100×, "—" when an ace cannot win), computed over all orders of the
+remaining 41 cards (`lib/game/card-race.ts`) and stored per track pattern in
+`game.race_odds` (`scripts/race-odds.ts` generates it; a test checks the
+table's checksum). A bet names the deal it was placed on (nonce and server seed
+hash), so nobody bets on odds they did not see. Jacks, queens and kings wear
+art from the 300 DEGEN NFT collection (`lib/game/card-art.ts`, `public/cards`).
 
 **Provably fair.** Every wallet has a secret server seed whose SHA-256 is shown
 in advance, a client seed it can choose, and a nonce counting its bets:
@@ -75,6 +89,9 @@ in advance, a client seed it can choose, and a nonce counting its bets:
 ```
 outcome = floor(u32(HMAC-SHA256(server seed, "<client seed>:<nonce>")[0..4]) × outcomes / 2^32)
 ```
+
+The horse race shuffles its deck with Fisher–Yates driven by
+HMAC-SHA256(server seed, "<client seed>:<nonce>:race:<block>").
 
 "Reveal seed & start new" (`/api/game/seed`) publishes the old server seed;
 the page then checks its hash and recomputes every listed round in the browser

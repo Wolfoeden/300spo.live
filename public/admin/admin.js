@@ -75,9 +75,10 @@ const renderGame = (data) => {
       data.games.map((game) => {
         const enabled = element("input", { type: "checkbox", checked: game.enabled });
         const payout = element("input", { value: String(game.payoutBps / 10000), inputMode: "decimal", required: true, className: "payout" });
+        // Race games pay the odds of the dealt track; only the switch applies.
         const form = element("form", { className: "game-form" }, [
           element("label", { className: "checkbox" }, [enabled, " on"]),
-          element("label", { className: "inline" }, [payout, "×"]),
+          game.kind === "race" ? element("span", { className: "muted", textContent: "odds from the track" }) : element("label", { className: "inline" }, [payout, "×"]),
           element("button", { type: "submit", textContent: "Save" }),
         ]);
         form.addEventListener("submit", async (event) => {

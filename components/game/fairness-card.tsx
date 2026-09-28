@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { choiceLabel } from "@/lib/game/catalog";
+import { raceDeck, runRace } from "@/lib/game/card-race";
 import { sha256Hex, verifyOutcome } from "@/lib/game/fair";
 import { Check, Spinner } from "../icons";
 
@@ -24,7 +25,10 @@ const checkSeeds = async (revealed: Fairness["revealed"], rounds: Round[], outco
     const played = rounds.filter((round) => round.serverSeedHash === seed.serverSeedHash);
     const mismatches: number[] = [];
     for (const round of played) {
-      const outcome = await verifyOutcome({ serverSeed: seed.serverSeed, clientSeed: round.clientSeed, nonce: round.nonce, outcomes: outcomes[round.game] ?? 2 });
+      const outcome =
+        round.game === "card-race"
+          ? runRace(await raceDeck(seed.serverSeed, round.clientSeed, round.nonce)).winner
+          : await verifyOutcome({ serverSeed: seed.serverSeed, clientSeed: round.clientSeed, nonce: round.nonce, outcomes: outcomes[round.game] ?? 2 });
       if (outcome !== round.outcome) mismatches.push(round.id);
     }
     results[seed.serverSeedHash] = { seedOk, checked: played.length, mismatches };
@@ -98,7 +102,10 @@ export function FairnessCard({
     <section className="rounded-3xl border border-line p-6 lg:col-span-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-semibold">Provably fair</h3>
-        <p className="text-xs text-faint">outcome = HMAC-SHA256(server seed, &quot;client seed:nonce&quot;), first 4 bytes × outcomes ÷ 2³²</p>
+        <p className="text-xs text-faint">
+          outcome = HMAC-SHA256(server seed, &quot;client seed:nonce&quot;), first 4 bytes × outcomes ÷ 2³² · horse race: the deck is shuffled with
+          HMAC(server seed, &quot;client seed:nonce:race:n&quot;)
+        </p>
       </div>
       {!fairness ? (
         <p className="mt-3 text-sm text-muted">{error ?? "Loading…"}</p>
