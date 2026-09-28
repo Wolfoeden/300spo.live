@@ -4,8 +4,11 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_COPY, cosmetic, formatMultiplier, isPlayableGame, type GameId } from "@/lib/game/catalog";
 import { formatTokenAmount } from "@/lib/format";
-import { SUIT_SYMBOLS, isRed } from "@/lib/game/card-race";
+import { SUIT_COLORS, SUIT_SYMBOLS } from "@/lib/game/card-race";
+import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { Spinner } from "../icons";
+import { InfoBubble } from "../info-bubble";
+import { BalanceChip, WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RacePreview } from "./card-race-stage";
 
 export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
@@ -50,6 +53,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<RacePreview | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [burst, setBurst] = useState<{ roundId: number; amount: number } | null>(null);
   const timer = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -78,15 +82,19 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
     };
   }, [isRace, loadRace, previewKey, dealVersion]);
 
-  const finish = useCallback(() => {
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = null;
-    setPhase("done");
-    // A race is followed by a new deal: the player picks again after seeing its track.
-    if (isRace) setChoice(null);
-    setPreviewKey((key) => key + 1);
-    onSettled();
-  }, [isRace, onSettled]);
+  const finish = useCallback(
+    (outcome: PlayResult) => {
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
+      setPhase("done");
+      if (outcome.win) setBurst({ roundId: outcome.roundId, amount: outcome.payout });
+      // A race is followed by a new deal: the player picks again after seeing its track.
+      if (isRace) setChoice(null);
+      setPreviewKey((key) => key + 1);
+      onSettled();
+    },
+    [isRace, onSettled],
+  );
 
   if (!game) return null;
   const copy = GAME_COPY[game.id as GameId];
@@ -96,6 +104,8 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const canPlay = enabled && choice !== null && bet <= balance && !busy && (!isRace || (!!preview && pickOdds(choice) > 0));
   // After a race the board keeps the finished race until the player picks for the next one.
   const showResult = phase !== "idle";
+  // The in-game balance drops by the bet at once and shows the payout only when the round has played out.
+  const shownBalance = busy ? balance - bet : phase === "done" && result ? result.balance : balance;
 
   const switchGame = (id: GameId) => {
     if (busy) return;
@@ -109,6 +119,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
   const pick = (index: number) => {
     if (busy) return;
     setChoice(index);
+    setBurst(null);
     if (isRace && phase === "done") setPhase("idle");
   };
 
@@ -116,6 +127,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
     if (choice === null) return;
     setError(null);
     setResult(null);
+    setBurst(null);
     setPhase("waiting");
     try {
       const outcome = await play(game.id, bet, choice, isRace && preview ? { nonce: preview.nonce, serverSeedHash: preview.serverSeedHash } : undefined);
@@ -124,7 +136,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
       // On phones the stage sits above the controls; bring it into view for the show.
       const box = stage.current?.getBoundingClientRect();
       if (box && (box.top < 0 || box.bottom > window.innerHeight)) stage.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-      timer.current = window.setTimeout(finish, reduce ? 200 : animationMs(outcome));
+      timer.current = window.setTimeout(() => finish(outcome), reduce ? 200 : animationMs(outcome));
     } catch (cause) {
       setPhase("idle");
       setError(cause instanceof Error ? cause.message : "The bet could not be placed.");
@@ -138,25 +150,29 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
     <section className="relative overflow-hidden rounded-3xl border border-line bg-night lg:col-span-2">
       <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-50" />
       <div className="relative">
-        <div className="flex gap-1 overflow-x-auto border-b border-line p-2" role="tablist" aria-label="Games">
-          {playable.map((entry) => (
-            <button
-              key={entry.id}
-              role="tab"
-              aria-selected={entry.id === game.id}
-              onClick={() => switchGame(entry.id as GameId)}
-              className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
-                entry.id === game.id ? "bg-gold/15 text-gold-bright" : "text-muted hover:bg-white/5 hover:text-text"
-              }`}
-            >
-              {GAME_COPY[entry.id as GameId].title}
-              <span className="ml-2 font-mono text-xs text-faint">{entry.kind === "race" ? "odds" : formatMultiplier(entry.payoutBps)}</span>
-            </button>
-          ))}
+        <div className="flex items-center gap-2 border-b border-line p-2">
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" role="tablist" aria-label="Games">
+            {playable.map((entry) => (
+              <button
+                key={entry.id}
+                role="tab"
+                aria-selected={entry.id === game.id}
+                onClick={() => switchGame(entry.id as GameId)}
+                className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
+                  entry.id === game.id ? "bg-gold/15 text-gold-bright" : "text-muted hover:bg-white/5 hover:text-text"
+                }`}
+              >
+                {GAME_COPY[entry.id as GameId].title}
+                <span className="ml-2 font-mono text-xs text-faint">{entry.kind === "race" ? "odds" : formatMultiplier(entry.payoutBps)}</span>
+              </button>
+            ))}
+          </div>
+          <BalanceChip value={shownBalance} />
         </div>
 
         <div className="grid grid-cols-1 gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-          <div ref={stage} className="min-h-[18rem]">
+          <div ref={stage} className="relative min-h-[18rem]">
+            <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
             {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
             {game.id === "card-race" && (
               <CardRaceStage
@@ -172,12 +188,23 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
           </div>
 
           <div className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-2xl font-semibold">{copy.title}</h2>
-              <p className="mt-1 text-sm text-muted">
-                {copy.tagline} {isRace ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(game.payoutBps)} your bet.`}
-              </p>
-            </div>
+            <h2 className="flex items-center gap-2 text-2xl font-semibold">
+              {copy.title}
+              <InfoBubble label={`How ${copy.title} works`}>
+                <span className="block">{copy.tagline}</span>
+                <span className="mt-2 block">
+                  {isRace ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(game.payoutBps)} your bet.`}
+                </span>
+                {isRace && (
+                  <span className="mt-2 block text-xs text-faint">
+                    Card art:{" "}
+                    <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
+                      300 DEGEN NFTs
+                    </a>
+                  </span>
+                )}
+              </InfoBubble>
+            </h2>
 
             <fieldset>
               <legend className="mb-2 text-xs text-faint">Your pick</legend>
@@ -192,7 +219,11 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
                       choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted enabled:hover:border-gold/40 enabled:hover:text-text"
                     }`}
                   >
-                    {isRace && <span className={`text-base leading-none ${isRed(index) ? "text-[#ff6b6b]" : "text-text"}`}>{SUIT_SYMBOLS[index]}</span>}
+                    {isRace && (
+                      <span className="text-base leading-none" style={{ color: SUIT_COLORS[index] }}>
+                        {SUIT_SYMBOLS[index]}
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                     {isRace && <span className="font-mono text-xs text-gold-bright">{odds ? (pickOdds(index) ? multiplier(index) : "—") : "…"}</span>}
                   </button>
@@ -228,7 +259,7 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
                   : `Bet ${formatTokenAmount(BigInt(bet))} on ${copy.choices[choice]}${isRace && odds ? ` · ${multiplier(choice)}` : ""}`}
             </button>
             {phase === "animating" && isRace && (
-              <button className="-mt-3 self-center text-xs text-faint underline-offset-4 hover:text-text hover:underline" onClick={finish}>
+              <button className="-mt-3 self-center text-xs text-faint underline-offset-4 hover:text-text hover:underline" onClick={() => result && finish(result)}>
                 Skip to the finish
               </button>
             )}

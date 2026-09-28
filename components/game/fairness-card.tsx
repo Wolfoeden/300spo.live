@@ -5,6 +5,7 @@ import { choiceLabel } from "@/lib/game/catalog";
 import { raceDeck, runRace } from "@/lib/game/card-race";
 import { sha256Hex, verifyOutcome } from "@/lib/game/fair";
 import { Check, Spinner } from "../icons";
+import { InfoBubble } from "../info-bubble";
 
 export type Fairness = {
   serverSeedHash: string;
@@ -100,13 +101,16 @@ export function FairnessCard({
 
   return (
     <section className="rounded-3xl border border-line p-6 lg:col-span-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">Provably fair</h3>
-        <p className="text-xs text-faint">
-          outcome = HMAC-SHA256(server seed, &quot;client seed:nonce&quot;), first 4 bytes × outcomes ÷ 2³² · horse race: the deck is shuffled with
-          HMAC(server seed, &quot;client seed:nonce:race:n&quot;)
-        </p>
-      </div>
+      <h3 className="flex items-center gap-2 font-semibold">
+        Provably fair
+        <InfoBubble label="How the fairness check works">
+          <span className="block">
+            The hash of the secret server seed is shown before you play. Revealing it lets this page recompute every round with that seed.
+          </span>
+          <span className="mt-2 block font-mono text-xs">outcome = HMAC-SHA256(server seed, &quot;client seed:nonce&quot;), first 4 bytes × outcomes ÷ 2³²</span>
+          <span className="mt-2 block font-mono text-xs">horse race deck: Fisher–Yates with HMAC(server seed, &quot;client seed:nonce:race:n&quot;)</span>
+        </InfoBubble>
+      </h3>
       {!fairness ? (
         <p className="mt-3 text-sm text-muted">{error ?? "Loading…"}</p>
       ) : (
