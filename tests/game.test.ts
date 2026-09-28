@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encode } from "cborg";
 import * as CSL from "@emurgo/cardano-serialization-lib-nodejs";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { addressToBech32, bytesToHex, hexToBytes } from "../lib/cardano/address";
+import { addressBytesFromWallet, addressToBech32, bytesToHex, hexToBytes } from "../lib/cardano/address";
 import { assembleSignedTx, buildTransaction, minAdaForOutput, parseUtxo, type ProtocolParams, type Utxo } from "../lib/cardano/tx";
-import { DEPOSIT_MESSAGE, analyseTreasuryTx, depositMetadata, depositReference, type KoiosTx } from "../lib/game/treasury";
+import { DEPOSIT_MESSAGE, analyseTreasuryTx, depositMetadata, depositReference, ownsTreasury, type KoiosTx } from "../lib/game/treasury";
 import { TOKEN_300 } from "../lib/site";
 
 const PARAMS: ProtocolParams = { minFeeA: 44n, minFeeB: 155381n, keyDeposit: 2_000_000n, coinsPerUtxoByte: 4310n, maxTxSize: 16384 };
@@ -79,6 +79,15 @@ describe("analyseTreasuryTx", () => {
     expect(analyseTreasuryTx(otherToken, TREASURY)).toEqual({ kind: "ignored", reason: "no_tokens" });
   });
 
+  it("recognises the wallet that holds the treasury", () => {
+    const treasury = "addr1qx2xuynak3a4p0fz5f2gh2kjtvx2ntskn4u9sz7q4rl3cxcd8s2g5kfw5u5qvp223prt98llxncqt8t2hnla6w2qwgfqxkavm8";
+    const treasuryStake = addressToBech32(new Uint8Array([0xe1, ...addressBytesFromWallet(treasury).slice(29)]));
+    const stranger = addressToBech32(new Uint8Array([0xe1, ...new Uint8Array(28).fill(7)]));
+    expect(ownsTreasury(treasury, { changeAddress: "addr1other", stakeAddress: treasuryStake })).toBe(true);
+    expect(ownsTreasury(treasury, { changeAddress: treasury, stakeAddress: null })).toBe(true);
+    expect(ownsTreasury(treasury, { changeAddress: "addr1other", stakeAddress: stranger })).toBe(false);
+  });
+
   it("keeps receipts without a usable reference for manual assignment", () => {
     expect(analyseTreasuryTx(koiosTx({ metadata: null }), TREASURY)).toMatchObject({ kind: "receipt", reference: null });
     expect(depositReference({ "674": { msg: [DEPOSIT_MESSAGE, "1; drop table"] } })).toBeNull();
@@ -88,6 +97,7 @@ describe("analyseTreasuryTx", () => {
 const db = vi.hoisted(() => ({
   watcherState: vi.fn(),
   confirmDeposit: vi.fn(),
+  rejectDeposit: vi.fn(),
   recordUnmatched: vi.fn(),
   setScannedBlockHeight: vi.fn(),
 }));
@@ -118,6 +128,18 @@ describe("scanTreasury", () => {
     expect(db.recordUnmatched).toHaveBeenCalledWith(anonymous.tx_hash, 1000n, 91);
     // Progress never passes tip - 5 blocks (block 99 is still pending); rescans are idempotent.
     expect(db.setScannedBlockHeight).toHaveBeenCalledWith(TREASURY, 95);
+  });
+
+  it("closes a deposit the treasury wallet sent to itself instead of leaving it pending", async () => {
+    const { scanTreasury } = await import("../lib/server/game-scan");
+    const selfTransfer = koiosTx({ tx_hash: "04".repeat(32), block_height: 90, inputs: [{ payment_addr: { bech32: TREASURY } }] });
+    chain.koios.mockResolvedValue([{ tx_hash: selfTransfer.tx_hash, block_height: 90 }]);
+    chain.tipHeight.mockResolvedValue(100);
+    chain.txInfo.mockResolvedValue([selfTransfer]);
+
+    expect(await scanTreasury()).toMatchObject({ credited: 0, ignored: 1 });
+    expect(db.confirmDeposit).not.toHaveBeenCalled();
+    expect(db.rejectDeposit).toHaveBeenCalledWith(REFERENCE, selfTransfer.tx_hash, "treasury_wallet");
   });
 
   it("does nothing until a treasury is configured", async () => {

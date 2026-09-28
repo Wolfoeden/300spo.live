@@ -1,3 +1,4 @@
+import { addressBytesFromWallet, sameBytes } from "../cardano/address";
 import { cip20Message } from "../cardano/tx";
 import { TOKEN_300 } from "../site";
 
@@ -50,6 +51,21 @@ export const analyseTreasuryTx = (tx: KoiosTx, treasuryAddress: string): Treasur
   }
   if (quantity === 0n) return { kind: "ignored", reason: "no_tokens" };
   return { kind: "receipt", quantity, reference: depositReference(tx.metadata) };
+};
+
+/**
+ * True when the connected wallet holds the treasury: the same address, or a
+ * base address sharing the treasury's stake key. Its "deposits" never leave it.
+ */
+export const ownsTreasury = (treasury: string, wallet: { changeAddress: string; stakeAddress: string | null }) => {
+  if (wallet.changeAddress === treasury) return true;
+  try {
+    const bytes = addressBytesFromWallet(treasury);
+    const stake = bytes.length === 57 && bytes[0] >> 4 <= 3 ? bytes.slice(29) : null;
+    return !!stake && !!wallet.stakeAddress && sameBytes(stake, addressBytesFromWallet(wallet.stakeAddress).slice(1));
+  } catch {
+    return false;
+  }
 };
 
 export const confirmations = (blockHeight: number | null, tipHeight: number) =>

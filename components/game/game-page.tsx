@@ -6,7 +6,7 @@ import { assembleSignedTx, buildTransaction, ttlFromNow, minAdaForOutput, parseU
 import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { GAME_COPY, isKnownGame } from "@/lib/game/catalog";
-import { depositMetadata } from "@/lib/game/treasury";
+import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
@@ -25,7 +25,15 @@ type GameState = {
   bets: { min: number; max: number; step: number };
   games: ArenaGame[];
   balance: number;
-  deposits: { reference: string; requested: number; received: number | null; status: "open" | "submitted" | "confirmed"; txHash: string | null; createdAt: string }[];
+  deposits: {
+    reference: string;
+    requested: number;
+    received: number | null;
+    status: "open" | "submitted" | "confirmed" | "rejected";
+    note: string | null;
+    txHash: string | null;
+    createdAt: string;
+  }[];
   rounds: { id: number; game: string; bet: number; choice: number; outcome: number; payout: number; nonce: number; serverSeedHash: string; clientSeed: string; createdAt: string }[];
 };
 
@@ -224,7 +232,8 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
       ? minAdaForOutput({ address: addressBytesFromWallet(treasury), value: { lovelace: 0n, assets: new Map([[UNIT_300, parsed]]) } }, params)
       : null;
   const busy = phase.name === "working";
-  const canDeposit = state.enabled && !!treasury && parsed !== null && !tooSmall && !tooLarge && accepted && !!params && !busy;
+  const isTreasury = !!treasury && !!wallet && ownsTreasury(treasury, wallet);
+  const canDeposit = state.enabled && !!treasury && !isTreasury && parsed !== null && !tooSmall && !tooLarge && accepted && !!params && !busy;
 
   const deposit = async () => {
     const api30 = getApi();
@@ -309,6 +318,11 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
         <span className="text-muted">I understand that game credit, including winnings, can only be used for bets here. It cannot be withdrawn or refunded.</span>
       </label>
 
+      {isTreasury && (
+        <p className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+          This wallet holds the game treasury. Tokens sent from it stay in the treasury and are not credited — deposit from another wallet.
+        </p>
+      )}
       <button className="btn btn-gold mt-4 w-full" onClick={deposit} disabled={!canDeposit}>
         {busy ? <Spinner size={16} /> : null}
         {busy ? phase.step : parsed ? `Deposit ${formatTokenAmount(parsed)} tokens` : "Deposit"}
@@ -328,7 +342,8 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
   );
 }
 
-const STATUS_LABEL = { open: "Waiting for transaction", submitted: "Confirming…", confirmed: "Credited" } as const;
+const STATUS_LABEL = { open: "Waiting for transaction", submitted: "Confirming…", confirmed: "Credited", rejected: "Not credited" } as const;
+const REJECT_REASON: Record<string, string> = { treasury_wallet: "Sent from the treasury wallet itself — the tokens never left it." };
 
 function History({ state }: { state: GameState }) {
   const deposits = state.deposits.filter((deposit) => deposit.status !== "open" || deposit.txHash);
@@ -341,8 +356,11 @@ function History({ state }: { state: GameState }) {
           {deposits.length === 0 && <li className="py-2 text-faint">No deposits yet.</li>}
           {deposits.map((deposit) => (
             <li key={deposit.reference} className="flex items-center justify-between gap-3 py-2.5">
-              <span className="tabular-nums">{formatTokenAmount(BigInt(deposit.received ?? deposit.requested))} tokens</span>
-              <span className={deposit.status === "confirmed" ? "text-positive" : "text-muted"}>
+              <span className="min-w-0">
+                <span className="block tabular-nums">{formatTokenAmount(BigInt(deposit.received ?? deposit.requested))} tokens</span>
+                {deposit.status === "rejected" && deposit.note && <span className="block text-xs text-faint">{REJECT_REASON[deposit.note] ?? deposit.note}</span>}
+              </span>
+              <span className={`shrink-0 ${deposit.status === "confirmed" ? "text-positive" : deposit.status === "rejected" ? "text-warning" : "text-muted"}`}>
                 {STATUS_LABEL[deposit.status]}
                 {deposit.txHash && (
                   <a className="ml-2 text-faint hover:text-text" href={`https://cardanoscan.io/transaction/${deposit.txHash}`} target="_blank" rel="noreferrer">

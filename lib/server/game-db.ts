@@ -27,7 +27,7 @@ export type GameState = {
   bets: { min: number; max: number; step: number };
   games: { id: string; name: string; outcomes: number; payoutBps: number; enabled: boolean }[];
   balance: number;
-  deposits: { reference: string; requested: number; received: number | null; status: string; txHash: string | null; createdAt: string }[];
+  deposits: { reference: string; requested: number; received: number | null; status: string; note: string | null; txHash: string | null; createdAt: string }[];
   rounds: {
     id: number;
     game: string;
@@ -77,6 +77,7 @@ export const gameDb = {
     one<{ status: string; wallet?: string; balance?: number }>(
       db()`select game.confirm_deposit(${reference}::uuid, ${txHash}, ${received.toString()}::bigint, ${blockHeight}::bigint) as result`,
     ),
+  rejectDeposit: (reference: string, txHash: string, note: string) => db()`select game.reject_deposit(${reference}::uuid, ${txHash}, ${note})`,
   recordUnmatched: (txHash: string, quantity: bigint, blockHeight: number) =>
     db()`select game.record_unmatched(${txHash}, ${quantity.toString()}::bigint, ${blockHeight}::bigint)`,
   watcherState: () => one<{ treasuryAddress: string | null; scannedBlockHeight: number }>(db()`select game.watcher_state() as result`),
