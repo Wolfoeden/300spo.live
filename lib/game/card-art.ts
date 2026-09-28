@@ -26,7 +26,20 @@ const NUMBERS: Record<number, number[]> = {
   3: [13, 31, 38, 46, 49, 57, 61, 65, 70],
 };
 
+/** The aces are the racehorses: four legendary degens, one per suit. */
+const ACES: [number, string][] = [
+  [11, "Bearded"],
+  [8, "Bull"],
+  [22, "SUGR"],
+  [17, "Tim Cheese"],
+];
+
 const pad = (degen: number) => String(degen).padStart(3, "0");
+
+export const aceArt = (suit: number) => {
+  const [degen, name] = ACES[suit];
+  return { src: `/cards/degen-${pad(degen)}.jpg`, alt: `DEGEN #${pad(degen)} ${name}` };
+};
 
 /** Art for any non-ace card (suit 0–3, rank "2" … "K"). */
 export const cardArt = (suit: number, rank: string) => {
