@@ -182,6 +182,9 @@ export function Arena({ games, bets, balance, enabled, play, loadRace, dealVersi
                 picked={choice}
                 onPick={pick}
                 disabled={busy}
+                canStart={canPlay}
+                bet={bet}
+                onStart={() => void start()}
               />
             )}
             {game.id === "xerxes-vs-robot" && <DuelStage result={showResult ? result : null} />}
