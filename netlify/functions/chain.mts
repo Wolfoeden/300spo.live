@@ -33,7 +33,7 @@ const account = async (request: Request) => {
   }
   if (!stakeAddress.startsWith("stake1")) return json({ error: "mainnet_only" }, 400);
 
-  type AccountInfo = { status?: string; delegated_pool?: string | null; delegated_drep?: string | null };
+  type AccountInfo = { status?: string; delegated_pool?: string | null; delegated_drep?: string | null; total_balance?: string | null };
   const accounts = await koios<AccountInfo[]>("account_info", { _stake_addresses: [stakeAddress] });
   const info = Array.isArray(accounts) ? accounts[0] : undefined;
   const registered = info?.status === "registered";
@@ -44,6 +44,8 @@ const account = async (request: Request) => {
       delegatedPool: registered ? (info?.delegated_pool ?? null) : null,
       delegatedDrep: registered ? (info?.delegated_drep ?? null) : null,
       delegatedTo300: { pool: registered && info?.delegated_pool === POOL_ID, drep: registered && isOurDrep(info?.delegated_drep) },
+      // ADA controlled by the stake key (lovelace); the drip tiers compare it with their thresholds.
+      totalLovelace: registered ? (info?.total_balance ?? "0") : "0",
     },
     200,
     { "netlify-cdn-cache-control": "public, durable, max-age=20", "netlify-vary": "query=stake" },

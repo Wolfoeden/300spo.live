@@ -126,6 +126,19 @@
             <button type="submit">Save game settings</button><a href="/play/" target="_blank">Open /play ↗</a>
           </div>
         </form>
+        <h2>Starting credit</h2>
+        <p class="hint">
+          Wallets delegated to the 300 pool get this game credit once when they open /play. The ADA minimum is checked but not shown on the site.
+          <span id="welcomeStats"></span>
+        </p>
+        <form id="game-welcome">
+          <label class="checkbox"><input id="welcomeEnabled" type="checkbox" /> Starting credit enabled</label>
+          <div class="two">
+            <label>Starting credit (300 tokens)<input id="welcomeAmount" inputmode="numeric" required /></label>
+            <label>Minimum wallet balance (ADA)<input id="welcomeMinAda" inputmode="numeric" required /></label>
+          </div>
+          <div class="actions"><button type="submit">Save starting credit</button></div>
+        </form>
         <h2>Games</h2>
         <p class="hint">Payout is the multiple of the bet paid on a correct pick; 2× is fair for two outcomes. The horse race pays the exact odds of each dealt track.</p>
         <div id="game-games"></div>

@@ -66,6 +66,13 @@ const act = async (body: Record<string, unknown>) => {
       await gameDb.adminAssignUnmatched(String(body.txHash), wallet);
       return json(await gameDb.adminOverview());
     }
+    case "welcome": {
+      const amount = toBigInt(body.amount);
+      const minAda = toBigInt(body.minAda);
+      if (!amount || amount <= 0n || minAda === null || minAda < 0n) return json({ error: "Starting credit and minimum ADA must be whole numbers." }, 400);
+      await gameDb.adminUpdateWelcome(body.enabled === true, amount, minAda * 1_000_000n);
+      return json(await gameDb.adminOverview());
+    }
     case "scan": {
       const scan = await scanTreasury(7_000);
       await gameDb.recordScan({ source: "admin", ...scan });

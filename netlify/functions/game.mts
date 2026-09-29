@@ -2,6 +2,8 @@ import type { Config, Context } from "@netlify/functions";
 import { DatabaseConfigError } from "../../lib/server/db";
 import { gameDb, gameErrorCode } from "../../lib/server/game-db";
 import { checkDepositTx } from "../../lib/server/game-scan";
+import { koios } from "../../lib/server/koios";
+import { POOL_ID } from "../../lib/site";
 import { json, readSession } from "./_shared/wallet-auth";
 
 // Player API for the game balance. Every call needs the wallet session from
@@ -19,6 +21,19 @@ const readBody = async (request: Request): Promise<Record<string, unknown>> => {
 const sameOrigin = (request: Request) => {
   const origin = request.headers.get("origin");
   return !origin || origin === new URL(request.url).origin;
+};
+
+/**
+ * The one-time starting credit for wallets delegated to the 300 pool. The chain
+ * says whether the wallet delegates and how much ADA it holds; the database
+ * applies its minimum and books the credit once.
+ */
+const claimWelcome = async (wallet: string) => {
+  if (!wallet.startsWith("stake1")) return { status: "not_delegated" };
+  type AccountInfo = { status?: string; delegated_pool?: string | null; total_balance?: string | null };
+  const [info] = await koios<AccountInfo[]>("account_info", { _stake_addresses: [wallet] });
+  if (info?.status !== "registered" || info.delegated_pool !== POOL_ID) return { status: "not_delegated" };
+  return gameDb.claimWelcome(wallet, BigInt(info.total_balance ?? "0"));
 };
 
 const handle = async (request: Request, action: string, wallet: string) => {
@@ -106,6 +121,8 @@ const handle = async (request: Request, action: string, wallet: string) => {
     if (!Number.isSafeInteger(round) || round < 1) return json({ error: "invalid_request" }, 400);
     return json(action === "chicken-step" ? await gameDb.chickenStep(wallet, round) : await gameDb.chickenCollect(wallet, round));
   }
+
+  if (action === "welcome") return json(await claimWelcome(wallet));
 
   if (action === "seed") {
     const clientSeed = body.clientSeed === undefined || body.clientSeed === "" ? null : String(body.clientSeed);

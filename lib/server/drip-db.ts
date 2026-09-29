@@ -1,13 +1,26 @@
-import type { Allocation, Distribution } from "../drip/allocate";
+import type { Allocation, Distribution, Tier } from "../drip/allocate";
 import type { PayoutRecipient } from "../drip/payout";
 import { asJson, database as db, result as one } from "./db";
 
-export type DripReward = { unit: string; label: string; decimals: number; perEpoch: string };
+// Postgres type id of `text`, so an empty exclusion list still binds as text[].
+const TEXT_OID = 25;
+
+export type DripReward ={ unit: string; label: string; decimals: number; perEpoch: string; tier: Tier; distribution: Distribution };
 export type DripConfig = {
   enabled: boolean;
   minTokens: number;
-  distribution: Distribution;
+  tier1Lovelace: number;
+  tier2Lovelace: number;
+  excluded: string[];
   lastSnapshotEpoch: number | null;
+  rewards: DripReward[];
+};
+export type DripSettings = {
+  enabled: boolean;
+  minTokens: bigint;
+  tier1Lovelace: bigint;
+  tier2Lovelace: bigint;
+  excluded: string[];
   rewards: DripReward[];
 };
 
@@ -29,6 +42,7 @@ export const dripDb = {
   releasePayout: (txHash: string) => db()`select drip.release_payout(${txHash})`,
   pendingPayouts: () => one<{ txHash: string; status: string; createdAt: string }[]>(db()`select drip.pending_payouts() as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select drip.admin_overview() as result`),
-  adminUpdate: (enabled: boolean, minTokens: bigint, distribution: Distribution, rewards: DripReward[]) =>
-    db()`select drip.admin_update(${enabled}, ${minTokens.toString()}::bigint, ${distribution}, ${asJson(rewards)})`,
+  adminUpdate: (settings: DripSettings) =>
+    db()`select drip.admin_update(${settings.enabled}, ${settings.minTokens.toString()}::bigint, ${settings.tier1Lovelace.toString()}::bigint,
+      ${settings.tier2Lovelace.toString()}::bigint, ${db().array(settings.excluded, TEXT_OID)}::text[], ${asJson(settings.rewards)})`,
 };

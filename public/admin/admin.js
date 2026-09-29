@@ -54,6 +54,12 @@ const renderGame = (data) => {
   document.querySelector("#gameMaxBet").value = settings.maxBet;
   document.querySelector("#gameBetStep").value = settings.betStep;
   document.querySelector("#gameMinDeposit").value = settings.minDeposit;
+  if (data.welcome) {
+    document.querySelector("#welcomeEnabled").checked = data.welcome.enabled;
+    document.querySelector("#welcomeAmount").value = data.welcome.amount;
+    document.querySelector("#welcomeMinAda").value = Number(data.welcome.minLovelace) / 1e6;
+    document.querySelector("#welcomeStats").textContent = ` Granted so far: ${formatAmount(data.welcome.granted)} wallets, ${formatAmount(data.welcome.total)} 300.`;
+  }
 
   document.querySelector("#game-totals").replaceChildren(
     ...[
@@ -178,6 +184,18 @@ document.querySelector("#game-settings").addEventListener("submit", (event) => {
       minDeposit: document.querySelector("#gameMinDeposit").value.trim(),
     },
     "Game settings saved.",
+  );
+});
+document.querySelector("#game-welcome").addEventListener("submit", (event) => {
+  event.preventDefault();
+  runGameAction(
+    {
+      action: "welcome",
+      enabled: document.querySelector("#welcomeEnabled").checked,
+      amount: document.querySelector("#welcomeAmount").value.trim(),
+      minAda: document.querySelector("#welcomeMinAda").value.trim(),
+    },
+    "Starting credit saved.",
   );
 });
 document.querySelector("#game-adjust").addEventListener("submit", (event) => {

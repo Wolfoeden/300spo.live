@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { addressBytesFromWallet, bytesToHex } from "@/lib/cardano/address";
 import { assembleSignedTx, buildTransaction, ttlFromNow, minAdaForOutput, parseUtxo, type ProtocolParams, type TxOutput, type Utxo } from "@/lib/cardano/tx";
 import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
@@ -9,8 +9,9 @@ import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
-import { ArrowUpRight, Check, Shield, Spinner, WalletIcon } from "../icons";
+import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
+import { DelegateButton } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import type { RacePreview } from "./card-race-stage";
@@ -22,6 +23,9 @@ import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
 const POLL_MS = 20_000;
+// After a click on Delegate, the starting credit is checked again this often, this many times.
+const WELCOME_POLL_MS = 30_000;
+const WELCOME_POLLS = 10;
 
 type GameState = {
   wallet: string;
@@ -31,6 +35,7 @@ type GameState = {
   bets: { min: number; max: number; step: number };
   games: ArenaGame[];
   balance: number;
+  welcome?: { enabled: boolean; amount: number; claimed: boolean };
   deposits: {
     reference: string;
     requested: number;
@@ -83,6 +88,8 @@ const loadChicken = () => api<ChickenState>("/api/game/chicken");
 const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
 const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
 const collectChicken = (round: number) => api<ChickenRound>("/api/game/chicken-collect", { round });
+type WelcomeResult = { status: "granted"; amount: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
+const claimWelcome = () => api<WelcomeResult>("/api/game/welcome", {});
 
 class ApiError extends Error {}
 
@@ -133,6 +140,44 @@ export function GamePage() {
   }, []);
 
   const settle = useCallback(() => void refresh(), [refresh]);
+
+  // Starting credit: asked for once per wallet and visit while it is unclaimed.
+  // Wallets that do not delegate yet see the offer; the rest see nothing until it lands.
+  const [welcome, setWelcome] = useState<{ status: "offer" | "granted"; amount: number } | null>(null);
+  const [watching, setWatching] = useState(false);
+  const askedFor = useRef<string | null>(null);
+  const welcomeOpen = state?.welcome?.enabled === true && !state.welcome.claimed;
+  const welcomeAmount = state?.welcome?.amount ?? 0;
+  const tryWelcome = useCallback(async () => {
+    const result = await claimWelcome().catch(() => null);
+    if (result?.status === "granted") {
+      setWelcome({ status: "granted", amount: result.amount });
+      setWatching(false);
+      void refresh();
+    } else if (result?.status === "not_delegated") {
+      setWelcome({ status: "offer", amount: welcomeAmount });
+    } else if (result) {
+      setWelcome(null);
+      setWatching(false);
+    }
+  }, [refresh, welcomeAmount]);
+
+  useEffect(() => {
+    if (!welcomeOpen || !state || askedFor.current === state.wallet) return;
+    askedFor.current = state.wallet;
+    void tryWelcome();
+  }, [welcomeOpen, state, tryWelcome]);
+
+  useEffect(() => {
+    if (!watching) return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls >= WELCOME_POLLS) setWatching(false);
+      void tryWelcome();
+    }, WELCOME_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [watching, tryWelcome]);
   const [dealVersion, setDealVersion] = useState(0);
 
   useEffect(() => {
@@ -221,6 +266,11 @@ export function GamePage() {
                   pick pays out in game credit.
                 </span>
                 <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
+                {state?.welcome?.enabled && (
+                  <span className="mt-2 block">
+                    Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.amount))} 300 starting credit once.
+                  </span>
+                )}
               </InfoBubble>
             </h1>
           </div>
@@ -233,6 +283,16 @@ export function GamePage() {
             connected={status === "connected" && !!wallet}
           />
         </header>
+
+        {welcome && !gate && (
+          <WelcomeNotice
+            status={welcome.status}
+            amount={welcome.amount}
+            watching={watching}
+            onDelegate={() => setWatching(true)}
+            onDismiss={() => setWelcome(null)}
+          />
+        )}
 
         <div id="games" className="mt-10 scroll-mt-24">
           {!tile ? (
@@ -345,6 +405,59 @@ function AccountBar({
       <a href="#deposit" className="btn btn-ghost !px-4 !py-2 text-sm">
         Deposit
       </a>
+    </div>
+  );
+}
+
+/** The starting-credit offer for wallets that do not delegate yet, or the note that it was credited. */
+function WelcomeNotice({
+  status,
+  amount,
+  watching,
+  onDelegate,
+  onDismiss,
+}: {
+  status: "offer" | "granted";
+  amount: number;
+  watching: boolean;
+  onDelegate(): void;
+  onDismiss(): void;
+}) {
+  const credit = `${formatTokenAmount(BigInt(amount))} 300`;
+  return (
+    <div
+      className={`mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${
+        status === "granted" ? "border-positive/40 bg-positive/10 text-positive" : "border-gold/30 bg-gold/[0.06] text-text"
+      }`}
+      role="status"
+    >
+      {status === "granted" ? (
+        <>
+          <span className="flex items-center gap-2">
+            <Check size={16} /> {credit} starting credit added. Thanks for delegating to 300.
+          </span>
+          <button onClick={onDismiss} aria-label="Dismiss" className="text-positive/80 hover:text-positive">
+            <Close size={14} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span>
+            Delegate to the 300 stake pool and get <strong className="text-gold-bright">{credit}</strong> starting credit to play.
+          </span>
+          {watching ? (
+            <span className="flex items-center gap-2 text-muted">
+              <Spinner size={14} /> Waiting for the delegation on chain…
+            </span>
+          ) : (
+            <span onClickCapture={onDelegate}>
+              <DelegateButton target="pool" className="btn btn-gold !px-4 !py-2 text-xs">
+                Delegate
+              </DelegateButton>
+            </span>
+          )}
+        </>
+      )}
     </div>
   );
 }
