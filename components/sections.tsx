@@ -5,6 +5,7 @@ import { useState } from "react";
 import { LINKS } from "@/lib/site";
 import { useLiveData } from "./data/live-data";
 import { ArrowRight, Plus } from "./icons";
+import { PARTNER_LINKS, RealFiBanner } from "./ads";
 import { WalletSoonButton } from "./coming-soon";
 import { Reveal } from "./motion";
 import { Brand } from "./site-header";
@@ -23,31 +24,36 @@ export function Partners() {
               <h2 id="partners-title" className="mt-4 text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">
                 {content.partnerHeading}
               </h2>
-              <p className="mt-5 max-w-lg text-muted">{content.partnerBody}</p>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-5" aria-label="Midnight and RealFi">
               {[
-                ["/partners/midnight-logo-white.svg", "Midnight", "Privacy & identity"],
-                ["/partners/realfi-logo-white.svg", "RealFi", "Real-world finance"],
-              ].map(([src, name, tag], index) => (
-                <PartnerCard key={name} src={src} name={name} tag={tag} withPlus={index === 0} />
+                ["/partners/midnight-logo-white.svg", "Midnight", "Privacy & identity", PARTNER_LINKS.midnight],
+                ["/partners/realfi-logo-white.svg", "RealFi", "Real-world finance", PARTNER_LINKS.realfi],
+              ].map(([src, name, tag, href], index) => (
+                <PartnerCard key={name} src={src} name={name} tag={tag} href={href} withPlus={index === 0} />
               ))}
             </div>
           </div>
         </Reveal>
+        <RealFiBanner />
       </div>
     </section>
   );
 }
 
-function PartnerCard({ src, name, tag, withPlus }: { src: string; name: string; tag: string; withPlus: boolean }) {
+function PartnerCard({ src, name, tag, href, withPlus }: { src: string; name: string; tag: string; href: string; withPlus: boolean }) {
   return (
     <>
-      <div className="glass group flex aspect-[4/3] flex-col items-center justify-center gap-4 rounded-3xl p-5 transition hover:border-gold/30">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="glass group flex aspect-[4/3] flex-col items-center justify-center gap-4 rounded-3xl p-5 transition hover:border-gold/30"
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={src} alt={name} className="h-8 w-auto max-w-full transition group-hover:scale-105 sm:h-10" />
         <span className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-faint">{tag}</span>
-      </div>
+      </a>
       {withPlus && <span className="text-2xl text-gold">+</span>}
     </>
   );
@@ -134,7 +140,6 @@ export function FinalCta() {
           <div className="relative max-w-2xl">
             <p className="kicker">Built for the long term</p>
             <h2 className="mt-4 text-4xl font-semibold tracking-[-0.03em] sm:text-6xl">Help shape Cardano&apos;s future with 300.</h2>
-            <p className="mt-4 text-lg text-muted">Stake. Govern. Keep control.</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <DelegateButton target="pool" className="btn btn-gold">
                 Delegate to SPO <ArrowRight size={16} />
@@ -156,7 +161,6 @@ export function SiteFooter() {
     <footer className="border-t border-line py-10">
       <div className="container-site flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <Brand />
-        <p className="text-sm text-muted">Independent infrastructure. Responsible governance. Built on Cardano.</p>
         <div className="flex items-center gap-4 text-sm text-faint">
           <a href={LINKS.admin} className="hover:text-text">
             Admin

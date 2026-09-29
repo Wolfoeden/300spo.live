@@ -23,14 +23,12 @@ export type SiteContent = {
   heroAnnouncement: string;
   partnerKicker: string;
   partnerHeading: string;
-  partnerBody: string;
 };
 
 export const DEFAULT_CONTENT: SiteContent = {
   heroAnnouncement: "300 SPO is now powered by Midnight and RealFi.",
   partnerKicker: "Our partners",
   partnerHeading: "300 SPO, powered by Midnight and RealFi.",
-  partnerBody: "Building a stronger, more useful stake pool together across the Cardano ecosystem.",
 };
 
 type LiveDataValue = { metrics: LiveMetrics | null; metricsFailed: boolean; content: SiteContent };

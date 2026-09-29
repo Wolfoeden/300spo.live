@@ -1,4 +1,5 @@
 import { LiveDataProvider } from "@/components/data/live-data";
+import { MidnightCityAd } from "@/components/ads";
 import { DripSection } from "@/components/drip/drip-section";
 import { Guide } from "@/components/guide";
 import { Hero } from "@/components/hero";
@@ -14,6 +15,7 @@ export default function HomePage() {
       <SiteHeader />
       <main>
         <Hero />
+        <MidnightCityAd />
         <Guide />
         <DripSection />
         <Partners />
