@@ -104,7 +104,7 @@ function Art({ slug }: { slug: string }) {
     case "xerxes-vs-robot":
       return <DuelArt />;
     case "chicken":
-      return <PortraitArt src="/cards/degen-004.jpg" alt="DEGEN #004 Cock" />;
+      return <ChickenArt />;
     case "dice":
       return <DiceArt />;
     case "sparta-board":
@@ -173,11 +173,30 @@ function DuelArt() {
   );
 }
 
-function PortraitArt({ src, alt }: { src: string; alt: string }) {
+/** A slice of the road: lanes with rising multipliers and the blue cock on his way. */
+function ChickenArt() {
+  const plates = ["1.04×", "1.08×", "1.13×", "1.19×"];
   return (
-    <div className="absolute inset-0 grid place-items-center">
+    <div className="absolute inset-0 flex items-center bg-[linear-gradient(180deg,#1b1c20,#141518)]">
+      <div className="flex h-full w-full">
+        {plates.map((plate, index) => (
+          <div key={plate} className="relative flex-1 border-l-2 border-dashed border-gold/25">
+            <span
+              className={`absolute left-1/2 top-1/2 grid aspect-square w-[62%] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 text-[0.6rem] font-bold sm:text-xs ${
+                index === 0 ? "border-gold-bright bg-gold text-[#1a1204]" : "border-white/15 bg-[#1f2024] text-faint"
+              }`}
+            >
+              {plate}
+            </span>
+          </div>
+        ))}
+      </div>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="h-[72%] rounded-2xl shadow-2xl ring-1 ring-gold/40" />
+      <img
+        src="/game/chicken-cock.jpg"
+        alt="The blue cock"
+        className="absolute left-[16%] top-1/2 h-[46%] -translate-x-1/2 -translate-y-1/2 rounded-full ring-[3px] ring-gold-bright shadow-2xl"
+      />
     </div>
   );
 }

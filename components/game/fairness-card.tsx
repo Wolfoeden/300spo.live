@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { choiceLabel } from "@/lib/game/catalog";
 import { raceDeck, runRace } from "@/lib/game/card-race";
+import { crashLane, difficultyLabel } from "@/lib/game/chicken";
 import { sha256Hex, verifyOutcome } from "@/lib/game/fair";
 import { Check, Spinner } from "../icons";
 import { InfoBubble } from "../info-bubble";
@@ -14,7 +15,15 @@ export type Fairness = {
   revealed: { serverSeed: string; serverSeedHash: string; clientSeed: string; lastNonce: number; revealedAt: string }[];
 };
 
-type Round = { id: number; game: string; outcome: number; nonce: number; serverSeedHash: string; clientSeed: string };
+type Round = {
+  id: number;
+  game: string;
+  outcome: number;
+  nonce: number;
+  serverSeedHash: string;
+  clientSeed: string;
+  detail?: { hazards: number } | null;
+};
 type SeedCheck = { seedOk: boolean; checked: number; mismatches: number[] };
 
 const CLIENT_SEED = /^[A-Za-z0-9_-]{1,64}$/;
@@ -29,7 +38,9 @@ const checkSeeds = async (revealed: Fairness["revealed"], rounds: Round[], outco
       const outcome =
         round.game === "card-race"
           ? runRace(await raceDeck(seed.serverSeed, round.clientSeed, round.nonce)).winner
-          : await verifyOutcome({ serverSeed: seed.serverSeed, clientSeed: round.clientSeed, nonce: round.nonce, outcomes: outcomes[round.game] ?? 2 });
+          : round.game === "chicken"
+            ? await crashLane(seed.serverSeed, round.clientSeed, round.nonce, round.detail?.hazards ?? 1)
+            : await verifyOutcome({ serverSeed: seed.serverSeed, clientSeed: round.clientSeed, nonce: round.nonce, outcomes: outcomes[round.game] ?? 2 });
       if (outcome !== round.outcome) mismatches.push(round.id);
     }
     results[seed.serverSeedHash] = { seedOk, checked: played.length, mismatches };
@@ -109,6 +120,7 @@ export function FairnessCard({
           </span>
           <span className="mt-2 block font-mono text-xs">outcome = HMAC-SHA256(server seed, &quot;client seed:nonce&quot;), first 4 bytes × outcomes ÷ 2³²</span>
           <span className="mt-2 block font-mono text-xs">horse race deck: Fisher–Yates with HMAC(server seed, &quot;client seed:nonce:race:n&quot;)</span>
+          <span className="mt-2 block font-mono text-xs">chicken: 25 cells shuffled with &quot;…:chicken:n&quot;, the first of the h cars is the crash lane</span>
         </InfoBubble>
       </h3>
       {!fairness ? (
@@ -177,5 +189,7 @@ export function FairnessCard({
 }
 
 /** "Xerxes → 300" style label for a round's pick and result. */
-export const roundSummary = (round: { game: string; choice: number; outcome: number }) =>
-  `${choiceLabel(round.game, round.choice)} → ${choiceLabel(round.game, round.outcome)}`;
+export const roundSummary = (round: { game: string; choice: number; outcome: number; payout: number; detail?: { hazards: number } | null }) =>
+  round.game === "chicken"
+    ? `${difficultyLabel(round.detail?.hazards ?? 1)} · ${round.payout > 0 ? `collected after ${round.choice} lane${round.choice === 1 ? "" : "s"}` : `hit on lane ${round.choice}`}`
+    : `${choiceLabel(round.game, round.choice)} → ${choiceLabel(round.game, round.outcome)}`;

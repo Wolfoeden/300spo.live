@@ -17,6 +17,8 @@ export const GAME_ERRORS = new Set([
   "game_not_found",
   "race_changed",
   "invalid_request",
+  "round_open",
+  "round_not_open",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -50,6 +52,24 @@ export type RacePreview = { nonce: number; serverSeedHash: string; track: number
 
 /** The next few races at once (4× mode); deal i uses nonce `nonce + i`. */
 export type RacePreviews = { nonce: number; serverSeedHash: string; deals: { track: number[]; odds: number[] }[] };
+
+/** A chicken round as the player may see it (the car's lane only once it is over). */
+export type ChickenRound = {
+  id: number;
+  bet: number;
+  hazards: number;
+  lanes: number;
+  step: number;
+  status: "open" | "lost" | "collected";
+  payout: number;
+  nonce: number;
+  serverSeedHash: string;
+  clientSeed: string;
+  crashLane: number | null;
+  multipliers: number[];
+  balance?: number;
+};
+export type ChickenState = { open: ChickenRound | null; difficulties: { hazards: number; lanes: number; multipliers: number[] }[] };
 
 /** Result of a 4× round: one entry per deal, null where the player skipped it. */
 export type MultiRaceResult = { results: (PlayResult | null)[]; balance: number; serverSeedHash: string; clientSeed: string };
@@ -109,6 +129,11 @@ export const gameDb = {
     one<PlayResult>(
       db()`select game.play_race(${wallet}, ${bet.toString()}::bigint, ${choice}::integer, ${nonce}::integer, ${serverSeedHash}) as result`,
     ),
+  chickenState: (wallet: string) => one<ChickenState>(db()`select game.chicken_state(${wallet}) as result`),
+  chickenStart: (wallet: string, bet: bigint, hazards: number) =>
+    one<ChickenRound>(db()`select game.chicken_start(${wallet}, ${bet.toString()}::bigint, ${hazards}::integer) as result`),
+  chickenStep: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_step(${wallet}, ${round}::bigint) as result`),
+  chickenCollect: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_collect(${wallet}, ${round}::bigint) as result`),
   fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
   rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),
