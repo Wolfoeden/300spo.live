@@ -10,6 +10,11 @@ export const TOKEN_300 = {
   decimals: 0,
 } as const;
 
+export const PARTNER_LINKS = {
+  midnight: "https://midnight.network",
+  realfi: "https://realfi.co",
+} as const;
+
 export const LINKS = {
   poolPm: `https://pool.pm/${POOL_ID_HEX}`,
   cardanoOrg: "https://cardano.org/",

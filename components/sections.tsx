@@ -2,10 +2,9 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { LINKS } from "@/lib/site";
+import { LINKS, PARTNER_LINKS } from "@/lib/site";
 import { useLiveData } from "./data/live-data";
 import { ArrowRight, Plus } from "./icons";
-import { PARTNER_LINKS, RealFiBanner } from "./ads";
 import { WalletSoonButton } from "./coming-soon";
 import { Reveal } from "./motion";
 import { Brand } from "./site-header";
@@ -35,7 +34,6 @@ export function Partners() {
             </div>
           </div>
         </Reveal>
-        <RealFiBanner />
       </div>
     </section>
   );
