@@ -294,6 +294,74 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
 
 // ---------------------------------------------------------------- the road
 
+/** Camera tuning: base pull (1/s) and top speed as road widths per second. */
+const CAMERA = { pull: 2.6, speed: 3 };
+const CAMERA_STEP = 1 / 240;
+
+/**
+ * The road camera has weight. It trails a single hop, speeds up while the cock runs
+ * lane after lane so he stays near the middle, and coasts to a stop when he pauses:
+ * a damped spring whose pull grows with the distance to the cock.
+ */
+function useTrailingCamera(scroller: React.RefObject<HTMLDivElement | null>, focus: number, reduce: boolean) {
+  const camera = useRef({ x: 0, v: 0, goal: 0, frame: 0, last: 0 });
+
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const state = camera.current;
+    state.goal = Math.min(Math.max(0, element.scrollWidth - element.clientWidth), Math.max(0, focus - element.clientWidth / 2));
+    if (reduce) {
+      element.scrollTo({ left: state.goal, behavior: "instant" });
+      return;
+    }
+    // A running camera just takes the new goal and keeps its speed.
+    if (state.frame) return;
+    state.x = element.scrollLeft;
+    state.v = 0;
+    state.last = 0;
+    const tick = (now: number) => {
+      const dt = state.last ? Math.min(0.05, (now - state.last) / 1000) : 1 / 60;
+      state.last = now;
+      const half = element.clientWidth / 2 || 1;
+      const top = element.clientWidth * CAMERA.speed;
+      for (let left = dt; left > 1e-6; left -= CAMERA_STEP) {
+        const h = Math.min(CAMERA_STEP, left);
+        const error = state.goal - state.x;
+        const far = Math.min(1.2, Math.abs(error) / half);
+        const pull = CAMERA.pull * (1 + 2 * far + 6 * far * far);
+        state.v = Math.max(-top, Math.min(top, state.v + (pull * pull * error - 2 * pull * state.v) * h));
+        state.x += state.v * h;
+      }
+      if (Math.abs(state.goal - state.x) < 0.5 && Math.abs(state.v) < 4) {
+        element.scrollTo({ left: state.goal, behavior: "instant" });
+        state.frame = 0;
+        return;
+      }
+      element.scrollTo({ left: state.x, behavior: "instant" });
+      state.frame = requestAnimationFrame(tick);
+    };
+    state.frame = requestAnimationFrame(tick);
+  }, [scroller, focus, reduce]);
+
+  // The player takes over as soon as they drag or wheel the road; the camera stops with the game.
+  useEffect(() => {
+    const element = scroller.current;
+    const state = camera.current;
+    const release = () => {
+      cancelAnimationFrame(state.frame);
+      state.frame = 0;
+    };
+    element?.addEventListener("pointerdown", release);
+    element?.addEventListener("wheel", release, { passive: true });
+    return () => {
+      release();
+      element?.removeEventListener("pointerdown", release);
+      element?.removeEventListener("wheel", release);
+    };
+  }, [scroller]);
+}
+
 function Road({
   lanes,
   multipliers,
@@ -320,13 +388,7 @@ function Road({
   const sidewalk = Math.round(lane * 1.1);
   const centerOf = (index: number) => (index === 0 ? sidewalk / 2 : sidewalk + (index - 0.5) * lane);
 
-  // Keep the cock in view as he walks.
-  useEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    element.scrollTo({ left: Math.max(0, centerOf(position) - element.clientWidth / 2), behavior: reduce ? "auto" : "smooth" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [position, lane]);
+  useTrailingCamera(scroller, centerOf(position), reduce);
 
   return (
     <div ref={scroller} className="relative h-full overflow-x-auto overscroll-x-contain [scrollbar-width:thin]">
