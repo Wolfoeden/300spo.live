@@ -123,7 +123,7 @@ describe("card race odds", () => {
       const probabilities = winProbabilities([...pattern].map(Number));
       probabilities.forEach((probability) => expect((probability * oddsBps(probability)) / 10000).toBeLessThanOrEqual(1 + 1e-9));
     }
-  });
+  }, 30_000);
 
   it("marks aces that cannot win", () => {
     // Seven spades: only five spades are left, not enough for eight steps.

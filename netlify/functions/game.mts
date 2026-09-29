@@ -24,6 +24,7 @@ const sameOrigin = (request: Request) => {
 const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
+  if (action === "chicken" && request.method === "GET") return json(await gameDb.chickenState(wallet));
   if (action === "race" && request.method === "GET") {
     const count = Number(new URL(request.url).searchParams.get("count") ?? 1);
     if (!Number.isInteger(count) || count < 1 || count > 4) return json({ error: "invalid_request" }, 400);
@@ -91,6 +92,19 @@ const handle = async (request: Request, action: string, wallet: string) => {
       /^[0-9a-f]{64}$/.test(serverSeedHash);
     if (!valid) return json({ error: "invalid_request" }, 400);
     return json(await gameDb.playRaceMulti(wallet, bet, choices, nonce, serverSeedHash));
+  }
+
+  if (action === "chicken-start") {
+    const bet = /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : null;
+    const hazards = Number(body.hazards);
+    if (bet === null || ![1, 3, 5, 10].includes(hazards)) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.chickenStart(wallet, bet, hazards));
+  }
+
+  if (action === "chicken-step" || action === "chicken-collect") {
+    const round = Number(body.round);
+    if (!Number.isSafeInteger(round) || round < 1) return json({ error: "invalid_request" }, 400);
+    return json(action === "chicken-step" ? await gameDb.chickenStep(wallet, round) : await gameDb.chickenCollect(wallet, round));
   }
 
   if (action === "seed") {

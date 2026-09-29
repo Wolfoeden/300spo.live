@@ -23,7 +23,17 @@
   --animate-float: float 7s ease-in-out infinite;
   --animate-spin-slow: spin 40s linear infinite;
   --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+  --animate-drive: drive 3s linear infinite;
 
+  /* Chicken: cars crossing a lane from top to bottom. */
+  @keyframes drive {
+    0% {
+      transform: translateY(-130%);
+    }
+    100% {
+      transform: translateY(560%);
+    }
+  }
   @keyframes float {
     0%,
     100% {

@@ -13,6 +13,7 @@ export function GameFrame({
   balance,
   onBack,
   toolbar,
+  info,
   children,
 }: {
   gameId: GameId;
@@ -20,6 +21,8 @@ export function GameFrame({
   balance: number;
   onBack(): void;
   toolbar?: React.ReactNode;
+  /** Rules for the info bubble when the default "pick and payout" text does not fit. */
+  info?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const copy = GAME_COPY[gameId];
@@ -42,20 +45,22 @@ export function GameFrame({
           <h2 className="flex items-center gap-2 text-base font-semibold sm:text-lg">
             {copy.title}
             <InfoBubble label={`How ${copy.title} works`}>
-              <span className="block">{copy.tagline}</span>
-              <span className="mt-2 block">
-                {race ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(payoutBps)} your bet.`}
-              </span>
-              {race && (
-                <span className="mt-2 block">In 4× mode four races run at once, each with its own track and odds and the same bet.</span>
-              )}
-              {race && (
-                <span className="mt-2 block text-xs text-faint">
-                  Card art:{" "}
-                  <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
-                    300 DEGEN NFTs
-                  </a>
-                </span>
+              {info ?? (
+                <>
+                  <span className="block">{copy.tagline}</span>
+                  <span className="mt-2 block">
+                    {race ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(payoutBps)} your bet.`}
+                  </span>
+                  {race && <span className="mt-2 block">In 4× mode four races run at once, each with its own track and odds and the same bet.</span>}
+                  {race && (
+                    <span className="mt-2 block text-xs text-faint">
+                      Card art:{" "}
+                      <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
+                        300 DEGEN NFTs
+                      </a>
+                    </span>
+                  )}
+                </>
               )}
             </InfoBubble>
           </h2>

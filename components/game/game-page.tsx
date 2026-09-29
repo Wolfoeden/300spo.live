@@ -15,6 +15,7 @@ import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import type { RacePreview } from "./card-race-stage";
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
+import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-game";
 import { ModeSwitch } from "./game-frame";
 import { Lobby } from "./lobby";
 import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
@@ -47,6 +48,7 @@ type GameState = {
     outcome: number;
     payout: number;
     oddsBps: number | null;
+    detail: { hazards: number; lanes: number; steps: number; crashLane: number } | null;
     nonce: number;
     serverSeedHash: string;
     clientSeed: string;
@@ -62,6 +64,8 @@ const API_ERRORS: Record<string, string> = {
   invalid_choice: "Pick one of the listed options.",
   invalid_client_seed: "Client seed: 1–64 letters, digits, - or _.",
   race_changed: "The race was dealt again (another bet or a new seed). Check the new track and odds, then bet.",
+  round_open: "A Chicken round is still running. Finish it first — until then the seed cannot be revealed.",
+  round_not_open: "This round is already over.",
   too_many_open_deposits: "Too many unfinished deposits. Let the pending ones confirm first.",
   not_configured: "The game is not configured yet.",
   not_signed_in: "Your wallet session expired. Verify your wallet again.",
@@ -75,6 +79,10 @@ const placeBet = (game: string, bet: number, choice: number, race?: RaceTicket) 
   api<PlayResult>("/api/game/play", { game, bet: String(bet), choice, ...race });
 const placeRaces = (bet: number, choices: number[], ticket: RaceTicket) =>
   api<MultiRaceResult>("/api/game/play-races", { bet: String(bet), choices, ...ticket });
+const loadChicken = () => api<ChickenState>("/api/game/chicken");
+const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
+const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
+const collectChicken = (round: number) => api<ChickenRound>("/api/game/chicken-collect", { round });
 
 class ApiError extends Error {}
 
@@ -238,6 +246,20 @@ export function GamePage() {
             </div>
           ) : !game?.enabled || !common ? (
             <Gate icon={<Shield className="text-warning" />} title={`${tile.title} is paused`} text="This game is switched off right now. Try another one." />
+          ) : tile.game === "chicken" ? (
+            <ChickenGame
+              key="chicken"
+              game={game}
+              bets={common.bets}
+              balance={common.balance}
+              enabled={common.enabled}
+              onSettled={common.onSettled}
+              onBack={common.onBack}
+              load={loadChicken}
+              start={startChicken}
+              step={stepChicken}
+              collect={collectChicken}
+            />
           ) : quad ? (
             <QuadRace
               key="quad"

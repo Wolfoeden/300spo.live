@@ -3,7 +3,7 @@
 // Deck: the 48 cards without aces, card c = suit ⌊c/12⌋ (♠ ♥ ♦ ♣), rank c mod 12
 // (2 … K). The shuffle, the race and the odds table are mirrored exactly by
 // game.race_deck(), game.race_run() and game.race_odds in the database.
-import { hmacSha256 } from "./fair";
+import { hmacShuffle } from "./fair";
 
 export const SUITS = ["Spades", "Hearts", "Diamonds", "Clubs"] as const;
 export const SUIT_SYMBOLS = ["♠", "♥", "♦", "♣"] as const;
@@ -29,31 +29,7 @@ export const SUIT_COLORS = ["#8fb1ff", "#ff6b6b", "#f5c451", "#4fd08a"] as const
  * block = 0, 1, …; a word ≥ the largest multiple of n below 2^32 is skipped,
  * so every position is equally likely.
  */
-export const raceDeck = async (serverSeedHex: string, clientSeed: string, nonce: number) => {
-  const deck = Array.from({ length: DECK_SIZE }, (_, index) => index);
-  let block = 0;
-  let buffer = new Uint8Array(0);
-  let offset = 0;
-  const nextWord = async () => {
-    if (offset >= buffer.length) {
-      buffer = await hmacSha256(serverSeedHex, `${clientSeed}:${nonce}:race:${block}`);
-      block += 1;
-      offset = 0;
-    }
-    const word = ((buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3]) >>> 0;
-    offset += 4;
-    return word;
-  };
-  for (let i = DECK_SIZE - 1; i >= 1; i -= 1) {
-    const n = i + 1;
-    const limit = Math.floor(2 ** 32 / n) * n;
-    let word = await nextWord();
-    while (word >= limit) word = await nextWord();
-    const j = word % n;
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
-};
+export const raceDeck = (serverSeedHex: string, clientSeed: string, nonce: number) => hmacShuffle(serverSeedHex, clientSeed, nonce, "race", DECK_SIZE);
 
 export type RaceEvent = { kind: "draw"; card: number; suit: number } | { kind: "setback"; row: number; suit: number };
 
