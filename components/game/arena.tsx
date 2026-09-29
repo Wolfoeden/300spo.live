@@ -304,7 +304,7 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
 
   return (
     <GameFrame gameId={game.id as GameId} payoutBps={game.payoutBps} onBack={onBack} toolbar={toolbar} panel={panel} toast={toast}>
-      <div className="relative h-full">
+      <div className="relative h-full p-1 sm:p-0">
         <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
         {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
         {game.id === "card-race" && (

@@ -38,54 +38,69 @@ export function GameFrame({
 }) {
   const copy = GAME_COPY[gameId];
   const race = gameId === "card-race";
+  // Back, name, rules and the legal line: a slim strip over the game on phones, the head of the panel on desktops.
+  const heading = (
+    <div className="flex min-w-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="All games"
+        className="grid size-7 shrink-0 place-items-center rounded-full text-muted transition hover:bg-white/5 hover:text-text"
+      >
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <div className="min-w-0 leading-tight">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          {copy.title}
+          <InfoBubble label={`How ${copy.title} works`}>
+            {info ?? (
+              <>
+                <span className="block">{copy.tagline}</span>
+                <span className="mt-2 block">
+                  {race ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(payoutBps)} your bet.`}
+                </span>
+                {race && <span className="mt-2 block">In 4× mode four races run at once, each with its own track and odds and the same bet.</span>}
+                {race && (
+                  <span className="mt-2 block text-xs text-faint">
+                    Card art:{" "}
+                    <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
+                      300 DEGEN NFTs
+                    </a>
+                  </span>
+                )}
+              </>
+            )}
+          </InfoBubble>
+        </h2>
+        <p className="truncate text-[0.6rem] text-faint">Game credit only · no withdrawals</p>
+      </div>
+    </div>
+  );
   return (
     <section
       data-game-shell
-      className="relative h-[calc(100svh-6rem-var(--dock,11rem))] min-h-[22rem] snap-start overflow-hidden rounded-3xl border border-line bg-night lg:grid lg:h-[clamp(34rem,calc(100svh-6.5rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)]"
+      className="relative -mx-4 h-[calc(100svh-4.75rem-var(--dock,11rem))] min-h-[22rem] -scroll-mt-3 snap-start overflow-hidden bg-night sm:-mx-6 lg:mx-0 lg:grid lg:h-[clamp(34rem,calc(100svh-5.25rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)] lg:rounded-3xl lg:border lg:border-line"
       onPointerUp={(event) => {
         // A click with mouse or finger leaves focus on the button, which would swallow Enter and Space.
         if (event.target instanceof Element && event.target.closest("button")) window.setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
       }}
     >
-      {panel}
-      <div className="relative flex h-full min-h-0 min-w-0 flex-col">
-        <div aria-hidden="true" className="grid-backdrop pointer-events-none absolute inset-0 opacity-50" />
-        <div className="relative flex items-center gap-2 border-b border-line px-2 py-1.5 sm:px-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-text"
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="hidden sm:inline">All games</span>
-          </button>
-          <h2 className="flex items-center gap-2 text-base font-semibold sm:text-lg">
-            {copy.title}
-            <InfoBubble label={`How ${copy.title} works`}>
-              {info ?? (
-                <>
-                  <span className="block">{copy.tagline}</span>
-                  <span className="mt-2 block">
-                    {race ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(payoutBps)} your bet.`}
-                  </span>
-                  {race && <span className="mt-2 block">In 4× mode four races run at once, each with its own track and odds and the same bet.</span>}
-                  {race && (
-                    <span className="mt-2 block text-xs text-faint">
-                      Card art:{" "}
-                      <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
-                        300 DEGEN NFTs
-                      </a>
-                    </span>
-                  )}
-                </>
-              )}
-            </InfoBubble>
-          </h2>
+      <div className="lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-line lg:bg-ink/40">
+        <div className="hidden items-center gap-2 border-b border-line px-3 py-2.5 lg:flex">
+          {heading}
           <div className="ml-auto">{toolbar}</div>
         </div>
-        <div className="relative min-h-0 flex-1 p-2 sm:p-4">
+        {panel}
+      </div>
+      <div className="relative flex h-full min-h-0 min-w-0 flex-col">
+        <div aria-hidden="true" className="grid-backdrop pointer-events-none absolute inset-0 opacity-50" />
+        <div className="relative flex items-center gap-2 px-1.5 pt-1 lg:hidden">
+          {heading}
+          <div className="ml-auto">{toolbar}</div>
+        </div>
+        <div className="relative min-h-0 flex-1 sm:p-2 lg:p-3">
           {children}
           <Toast toast={toast ?? null} />
         </div>
