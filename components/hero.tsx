@@ -86,7 +86,7 @@ export function Hero() {
             <span>{content.heroAnnouncement}</span>
           </motion.a>
         </div>
-        <CoinStage status={pool?.status} stake={pool?.liveStakeLovelace} delegators={pool?.liveDelegators} />
+        <CoinStage status={pool?.status} stake={pool?.liveStakeLovelace} delegators={pool?.liveDelegators} votingPower={metrics?.drep?.amountLovelace} />
       </div>
       <ProofBar />
     </section>
@@ -109,7 +109,17 @@ function HeroBackdrop() {
   );
 }
 
-function CoinStage({ status, stake, delegators }: { status?: string | null; stake?: string | null; delegators?: number | null }) {
+function CoinStage({
+  status,
+  stake,
+  delegators,
+  votingPower,
+}: {
+  status?: string | null;
+  stake?: string | null;
+  delegators?: number | null;
+  votingPower?: string | null;
+}) {
   const reduce = useReducedMotion();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -153,6 +163,7 @@ function CoinStage({ status, stake, delegators }: { status?: string | null; stak
         Play 300 games <ArrowRight size={14} />
       </span>
       <FloatingChip className="left-0 top-[14%]" delay={0.5} label="Pool status" value={capitalize(status)} positive />
+      <FloatingChip className="right-0 top-[4%]" delay={0.6} label="DRep voting power" value={formatAdaCompact(votingPower)} />
       <FloatingChip className="right-0 top-[58%]" delay={0.65} label="Live stake" value={formatAdaCompact(stake)} />
       <FloatingChip className="bottom-[4%] left-0 hidden sm:block" delay={0.8} label="Delegators" value={formatInteger(delegators)} />
     </motion.a>
