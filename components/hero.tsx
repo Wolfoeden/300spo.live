@@ -1,10 +1,9 @@
 "use client";
 
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
-import { LINKS } from "@/lib/site";
+import { LINKS, PARTNER_LINKS } from "@/lib/site";
 import { capitalize, formatAdaCompact, formatCompact, formatInteger } from "@/lib/format";
 import { useLiveData } from "./data/live-data";
-import { PARTNER_LINKS } from "./ads";
 import { ArrowRight } from "./icons";
 import { CountUp } from "./motion";
 import { DelegateButton } from "./wallet/delegation";
