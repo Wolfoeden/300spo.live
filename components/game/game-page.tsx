@@ -20,7 +20,7 @@ import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-gam
 import { ModeSwitch } from "./game-frame";
 import { Lobby } from "./lobby";
 import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
-import { Terminal, openTerminalTab } from "./terminal";
+import { WalletCard, openTerminalTab } from "./terminal";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
 const POLL_MS = 20_000;
@@ -251,8 +251,21 @@ export function GamePage() {
       onBack: () => goTo(""),
       wallet: walletPanels,
     };
-  // On phones the game terminal is docked to the bottom of the screen; keep the page clear of it.
+  // On phones the game panel is docked to the bottom of the screen; keep the page clear of it.
   const docked = !!tile && !gate && !!common;
+
+  // Magnetic focus: while a game is open the page snaps to it when scrolled near,
+  // and a deliberate swipe still scrolls past to the rest of the page.
+  useEffect(() => {
+    if (!docked) return;
+    const root = document.documentElement;
+    root.style.scrollSnapType = "y proximity";
+    const frame = requestAnimationFrame(() => document.querySelector("[data-game-shell]")?.scrollIntoView({ block: "start" }));
+    return () => {
+      cancelAnimationFrame(frame);
+      root.style.scrollSnapType = "";
+    };
+  }, [docked, tile?.slug, welcome?.status]);
 
   return (
     <div className="relative">
@@ -262,7 +275,7 @@ export function GamePage() {
         <div className="absolute -top-40 right-[-10%] h-[30rem] w-[30rem] rounded-full bg-gold/[0.12] blur-[120px]" />
       </div>
 
-      <div className={`container-site relative pt-24 sm:pt-28 ${docked ? "pb-80 lg:pb-24" : "pb-24"}`}>
+      <div className={`container-site relative pt-24 sm:pt-28 ${docked ? "pb-[calc(var(--dock,11rem)+1.5rem)] lg:pb-24" : "pb-24"}`}>
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="kicker">300 Games</p>
@@ -361,7 +374,7 @@ export function GamePage() {
             <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
               <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
               {/* In a game the same tabs live in its terminal. */}
-              {!docked && walletPanels && <Terminal docked={false} deposit={walletPanels.deposit} rewards={walletPanels.rewards} />}
+              {!docked && walletPanels && <WalletCard wallet={walletPanels} />}
               <History state={state} />
               <FairnessSection state={state} onRotated={() => setDealVersion((version) => version + 1)} />
             </div>
@@ -455,7 +468,7 @@ function WelcomeNotice({
       ) : (
         <>
           <span>
-            Delegate to the 300 stake pool or DRep and get <strong className="text-gold-bright">{credit}</strong> starting credit to play.
+            Delegate and get <strong className="text-gold-bright">{formatTokenAmount(BigInt(amount))}</strong> credit to play.
           </span>
           <span className="flex items-center gap-3">
             {watching && (

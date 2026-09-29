@@ -1,44 +1,56 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { formatTokenAmount } from "@/lib/format";
 import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { GAME_COPY, formatMultiplier, type GameId } from "@/lib/game/catalog";
 import { InfoBubble } from "../info-bubble";
-import { BalanceChip } from "./arena-effects";
 
-/** The frame around a running game: back to the lobby, title with its rules, optional mode switch, balance. */
+export type GameToast = { id: string | number; text: string; tone: "win" | "info" | "warn" | "error" };
+
+/**
+ * A running game fills the screen: on phones the room between the site header
+ * and the docked panel, on desktops a fixed-height shell with the panel on the
+ * left and the game on the right. It snaps into place when scrolled near
+ * (see the scroll snap on /play); a deliberate swipe scrolls past it.
+ */
 export function GameFrame({
   gameId,
   payoutBps,
-  balance,
   onBack,
   toolbar,
   info,
+  panel,
+  toast,
   children,
 }: {
   gameId: GameId;
   payoutBps: number;
-  balance: number;
   onBack(): void;
   toolbar?: React.ReactNode;
   /** Rules for the info bubble when the default "pick and payout" text does not fit. */
   info?: React.ReactNode;
+  panel: React.ReactNode;
+  /** A message that shows over the game for a moment (result, auto play stopped, error). */
+  toast?: GameToast | null;
   children: React.ReactNode;
 }) {
   const copy = GAME_COPY[gameId];
   const race = gameId === "card-race";
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-line bg-night"
+      data-game-shell
+      className="relative h-[calc(100svh-6rem-var(--dock,11rem))] min-h-[22rem] snap-start overflow-hidden rounded-3xl border border-line bg-night lg:grid lg:h-[clamp(34rem,calc(100svh-6.5rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)]"
       onPointerUp={(event) => {
         // A click with mouse or finger leaves focus on the button, which would swallow Enter and Space.
         if (event.target instanceof Element && event.target.closest("button")) window.setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
       }}
     >
-      <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-50" />
-      <div className="relative">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-line px-2 py-2 sm:px-3">
+      {panel}
+      <div className="relative flex h-full min-h-0 min-w-0 flex-col">
+        <div aria-hidden="true" className="grid-backdrop pointer-events-none absolute inset-0 opacity-50" />
+        <div className="relative flex items-center gap-2 border-b border-line px-2 py-1.5 sm:px-3">
           <button
             type="button"
             onClick={onBack}
@@ -71,14 +83,53 @@ export function GameFrame({
               )}
             </InfoBubble>
           </h2>
-          {toolbar}
-          <div className="ml-auto">
-            <BalanceChip value={balance} />
-          </div>
+          <div className="ml-auto">{toolbar}</div>
         </div>
-        {children}
+        <div className="relative min-h-0 flex-1 p-2 sm:p-4">
+          {children}
+          <Toast toast={toast ?? null} />
+        </div>
       </div>
     </section>
+  );
+}
+
+const TOAST_STYLE: Record<GameToast["tone"], string> = {
+  win: "border-positive/50 bg-[#0d2418]/95 text-positive",
+  info: "border-line-strong bg-ink/95 text-text",
+  warn: "border-warning/40 bg-[#2a1f08]/95 text-warning",
+  error: "border-danger/40 bg-[#2a0d0f]/95 text-danger",
+};
+
+/** Shows each new message for a moment over the top of the game. */
+function Toast({ toast }: { toast: GameToast | null }) {
+  const [current, setCurrent] = useState<GameToast | null>(toast);
+  const [seen, setSeen] = useState(toast?.id ?? null);
+  if (toast && toast.id !== seen) {
+    setSeen(toast.id);
+    setCurrent(toast);
+  }
+  useEffect(() => {
+    if (!current) return;
+    const id = window.setTimeout(() => setCurrent(null), current.tone === "error" ? 6000 : 2600);
+    return () => window.clearTimeout(id);
+  }, [current]);
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-3" aria-live="polite">
+      <AnimatePresence>
+        {current && (
+          <motion.p
+            key={current.id}
+            className={`max-w-sm rounded-full border px-4 py-1.5 text-center text-sm font-semibold shadow-lg shadow-black/50 ${TOAST_STYLE[current.tone]}`}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            {current.text}
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

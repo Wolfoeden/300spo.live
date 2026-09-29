@@ -6,11 +6,11 @@ import { formatTokenAmount } from "@/lib/format";
 import { SUIT_COLORS, SUIT_SYMBOLS, SUITS } from "@/lib/game/card-race";
 import { formatMultiplier } from "@/lib/game/catalog";
 import { Spinner } from "../icons";
-import type { ArenaGame, PlayResult, RaceTicket, WalletPanels } from "./arena";
+import type { ArenaGame, PlayResult, RaceTicket } from "./arena";
 import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RaceDeal } from "./card-race-stage";
-import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
-import { AutoToggle, HoldPlayButton, Terminal, useAutoRun, useStopWhenHidden, type AutoMode } from "./terminal";
+import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
+import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
 
 export const BOARDS = 4;
 export type RaceDeals = { nonce: number; serverSeedHash: string; deals: RaceDeal[] };
@@ -47,7 +47,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const [playedNonce, setPlayedNonce] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auto, setAuto] = useState<AutoMode>("off");
-  const [autoNote, setAutoNote] = useState<string | null>(null);
+  const [autoNote, setAutoNote] = useState<{ id: number; text: string } | null>(null);
+  const [lastWin, setLastWin] = useState<number | null>(null);
   const timer = useRef<number | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   // The board the number keys pick for; it moves on after each pick.
@@ -75,6 +76,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
       timer.current = null;
       setPhase("done");
       setBursts(result.results.filter((round) => round?.win).map((round) => round!.roundId));
+      const payout = result.results.reduce((sum, round) => sum + (round?.win ? round.payout : 0), 0);
+      if (payout > 0) setLastWin(payout);
       setPicks(empty());
       setDealKey((key) => key + 1);
       onSettled();
@@ -151,13 +154,15 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   useAutoRun(auto, enabled && !busy && fresh, () => {
     if (!autoPicks || !playable(autoPicks)) {
       setAuto("off");
-      setAutoNote(
-        !autoPicks || count(autoPicks) === 0
-          ? "Auto stopped: pick a lane first."
-          : bet * count(autoPicks) > available
-            ? "Auto stopped: not enough game balance."
-            : "Auto stopped: a picked ace cannot win the new deal.",
-      );
+      setAutoNote({
+        id: Date.now(),
+        text:
+          !autoPicks || count(autoPicks) === 0
+            ? "Auto stopped · pick a lane first"
+            : bet * count(autoPicks) > available
+              ? "Auto stopped · not enough game balance"
+              : "Auto stopped · a picked ace cannot win the new deal",
+      });
       return;
     }
     void start(autoPicks, true);
@@ -189,85 +194,87 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
     a: () => (auto !== "off" ? changeAuto("off") : canAuto && changeAuto("lock")),
   });
 
-  const playPanel = (
-    <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-end gap-2 lg:grid-cols-1 lg:gap-3">
-        <BetStepper
-          compact
-          bets={bets}
-          bet={bet}
-          onChange={setBet}
-          disabled={busy}
-          label="Bet per race"
-          affordable={(amount) => amount * Math.max(1, picked) <= available}
-        />
-        <div className="flex gap-2">
-          <HoldPlayButton className="flex-1" onPlay={() => void start()} auto={auto} onAuto={changeAuto} playable={canStart || (canAuto && !busy)}>
-            {phase === "waiting" && <Spinner size={16} />}
-            {picked === 0 ? "Pick lanes" : total > available ? "Not enough balance" : `Start ${picked} · ${formatTokenAmount(BigInt(total))}`}
-            {canStart && <Kbd>Enter</Kbd>}
-          </HoldPlayButton>
-          <span className="hidden lg:contents">
-            <AutoToggle auto={auto} onAuto={changeAuto} disabled={!canAuto} />
-          </span>
-        </div>
-      </div>
-      <p className="text-center text-[0.7rem] text-faint pointer-fine:hidden">Hold for auto play · swipe up to lock it</p>
-      {canSkip && auto === "off" ? (
-        <button className="inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
-          Skip to the finish <Kbd>S</Kbd>
-        </button>
-      ) : (
-        <p className="hidden flex-wrap items-center justify-center gap-1.5 text-xs text-faint pointer-fine:flex">
-          <Kbd>←</Kbd>
-          <Kbd>→</Kbd> race · <Kbd>1</Kbd>–<Kbd>4</Kbd> lane · <Kbd>⌫</Kbd> clear
-        </p>
-      )}
-      <AnimatePresence mode="wait">
-        {phase === "done" && outcome && (
-          <motion.p
-            key={played.map((round) => round.roundId).join("-")}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className={`rounded-xl border px-3 py-2 text-sm font-semibold ${winnings > 0 ? "border-positive/40 bg-positive/10 text-positive" : "border-line bg-white/[0.03] text-muted"}`}
-          >
-            {winnings > 0 ? `+${formatTokenAmount(BigInt(winnings))} · ` : ""}
-            {won.length} of {played.length} won · {played.map((round) => SUIT_SYMBOLS[round.outcome]).join(" ")}
-          </motion.p>
-        )}
-      </AnimatePresence>
-      {autoNote && <p className="text-xs text-warning">{autoNote}</p>}
-      {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
-      {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
-    </div>
+  const prompt =
+    auto !== "off" ? (
+      "Auto play is on"
+    ) : busy ? (
+      "Racing…"
+    ) : picked === 0 ? (
+      "Pick a lane in any race"
+    ) : total > available ? (
+      "Not enough balance for these races"
+    ) : (
+      <>
+        <span className="pointer-fine:hidden">Tap to start · hold for auto</span>
+        <span className="hidden pointer-fine:inline">← → race · 1–4 lane · Enter start · A auto</span>
+      </>
+    );
+
+  const toast: GameToast | null = error
+    ? { id: `error-${error}`, text: error, tone: "error" }
+    : autoNote
+      ? { id: autoNote.id, text: autoNote.text, tone: "warn" }
+      : phase === "done" && outcome
+        ? {
+            id: played.map((round) => round.roundId).join("-"),
+            text: `${winnings > 0 ? `+${formatTokenAmount(BigInt(winnings))} · ` : ""}${won.length} of ${played.length} won · ${played.map((round) => SUIT_SYMBOLS[round.outcome]).join(" ")}`,
+            tone: winnings > 0 ? "win" : "info",
+          }
+        : !enabled
+          ? { id: "paused", text: "Games are paused right now.", tone: "warn" }
+          : null;
+
+  const panel = (
+    <GamePanel
+      prompt={prompt}
+      bet={{ bets, bet, onChange: setBet, disabled: busy, affordable: (amount) => amount * Math.max(1, picked) <= available }}
+      play={{
+        label: picked === 0 ? "Pick lanes" : `Start ${picked} race${picked === 1 ? "" : "s"} · ${formatTokenAmount(BigInt(total))}`,
+        onPlay: () => void start(),
+        playable: canStart || (canAuto && !busy),
+        auto,
+        onAuto: changeAuto,
+        kbd: canStart ? <Kbd>Enter</Kbd> : null,
+      }}
+      extra={
+        canSkip &&
+        auto === "off" && (
+          <button className="inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
+            Skip to the finish <Kbd>S</Kbd>
+          </button>
+        )
+      }
+      lastWin={lastWin}
+      balance={shownBalance}
+      wallet={wallet}
+    />
   );
 
   return (
-    <GameFrame gameId="card-race" payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} toolbar={toolbar}>
-      <div className="grid grid-cols-1 gap-4 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div ref={grid} className="grid scroll-mt-24 grid-cols-2 content-start gap-2 sm:gap-3">
-          {Array.from({ length: BOARDS }, (_, board) => {
-            const round = showResult ? (outcome?.results[board] ?? null) : null;
-            const choice = showResult && round ? round.choice : picks[board];
-            return (
-              <div
-                key={board}
-                className={`relative min-w-0 rounded-2xl border bg-ink/50 p-1.5 transition sm:p-3 ${
-                  active === board && !busy ? "border-gold/50 pointer-fine:shadow-[0_0_0_1px_rgba(233,180,76,0.25)]" : "border-line"
-                }`}
-                onPointerDown={() => setActive(board)}
-              >
-                <div className="mb-1 flex items-center justify-between gap-1 px-0.5 text-[0.65rem] sm:mb-2 sm:text-sm">
-                  <span className="font-mono uppercase tracking-[0.14em] text-faint">Race {board + 1}</span>
-                  {choice !== null ? (
-                    <span className="truncate font-semibold" style={{ color: SUIT_COLORS[choice] }}>
-                      {SUIT_SYMBOLS[choice]} {formatMultiplier(round?.race?.odds[choice] ?? oddsOf(board, choice))}
-                    </span>
-                  ) : (
-                    <span className="text-faint">{showResult ? "skipped" : "tap a lane"}</span>
-                  )}
-                </div>
+    <GameFrame gameId="card-race" payoutBps={game.payoutBps} onBack={onBack} toolbar={toolbar} panel={panel} toast={toast}>
+      <div className="grid h-full grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+        {Array.from({ length: BOARDS }, (_, board) => {
+          const round = showResult ? (outcome?.results[board] ?? null) : null;
+          const choice = showResult && round ? round.choice : picks[board];
+          return (
+            <div
+              key={board}
+              className={`relative flex min-h-0 min-w-0 flex-col rounded-2xl border bg-ink/50 p-1.5 transition sm:p-2.5 ${
+                active === board && !busy ? "border-gold/50 pointer-fine:shadow-[0_0_0_1px_rgba(233,180,76,0.25)]" : "border-line"
+              }`}
+              onPointerDown={() => setActive(board)}
+            >
+              <div className="mb-1 flex items-center justify-between gap-1 px-0.5 text-[0.65rem] sm:text-xs">
+                <span className="font-mono uppercase tracking-[0.14em] text-faint">Race {board + 1}</span>
+                {choice !== null ? (
+                  <span className="truncate font-semibold" style={{ color: SUIT_COLORS[choice] }}>
+                    {SUIT_SYMBOLS[choice]} {formatMultiplier(round?.race?.odds[choice] ?? oddsOf(board, choice))}
+                  </span>
+                ) : (
+                  <span className="text-faint">{showResult ? "skipped" : "tap a lane"}</span>
+                )}
+              </div>
+              <div className="min-h-0 flex-1">
                 <CardRaceStage
                   compact
                   deal={deals?.deals[board] ?? null}
@@ -277,21 +284,20 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
                   onPick={(suit) => pick(board, suit)}
                   disabled={busy}
                 />
-                <AnimatePresence>
-                  {phase === "done" && round && bursts.includes(round.roundId) && (
-                    <WinBurst
-                      key={round.roundId}
-                      compact
-                      amount={round.payout}
-                      onDone={() => setBursts((current) => current.filter((id) => id !== round.roundId))}
-                    />
-                  )}
-                </AnimatePresence>
               </div>
-            );
-          })}
-        </div>
-        <Terminal play={playPanel} deposit={wallet.deposit} rewards={wallet.rewards} balance={shownBalance} />
+              <AnimatePresence>
+                {phase === "done" && round && bursts.includes(round.roundId) && (
+                  <WinBurst
+                    key={round.roundId}
+                    compact
+                    amount={round.payout}
+                    onDone={() => setBursts((current) => current.filter((id) => id !== round.roundId))}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
       <p className="sr-only" aria-live="polite">
         {phase === "done" && outcome ? played.map((round) => `${SUITS[round.outcome]} won`).join(", ") : ""}

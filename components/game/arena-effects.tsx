@@ -83,8 +83,8 @@ export function WinBurst({ amount, onDone, compact = false }: { amount: number; 
   );
 }
 
-/** The game balance inside the arena: rolls to each new value and shows what changed. */
-export function BalanceChip({ value }: { value: number }) {
+/** The game balance in the panel: rolls to each new value and shows what changed. */
+export function RollingBalance({ value }: { value: number }) {
   const reduce = useReducedMotion();
   const [shown, setShown] = useState(value);
   const rolling = useRef(value);
@@ -108,19 +108,15 @@ export function BalanceChip({ value }: { value: number }) {
   }, [value, reduce]);
 
   return (
-    <div className="relative shrink-0" aria-label={`Game balance ${formatTokenAmount(BigInt(value))} tokens`}>
-      <div className="flex items-baseline gap-1.5 rounded-full border border-gold/30 bg-gold/[0.07] px-3 py-1.5">
-        <span className="hidden text-[0.65rem] uppercase tracking-[0.14em] text-faint sm:inline">Balance</span>
-        <span className="text-sm font-semibold tabular-nums">{formatTokenAmount(BigInt(shown))}</span>
-        <span className="text-gold-gradient text-xs font-bold">300</span>
-      </div>
+    <span className="relative inline-flex items-baseline gap-1 tabular-nums" aria-label={`Game balance ${formatTokenAmount(BigInt(value))} tokens`}>
+      {formatTokenAmount(BigInt(shown))} <span className="text-gold-gradient">300</span>
       <AnimatePresence>
         {change && change.amount !== 0 && (
           <motion.span
             key={change.id}
-            className={`pointer-events-none absolute right-3 top-full font-mono text-xs font-semibold tabular-nums ${change.amount > 0 ? "text-positive" : "text-danger"}`}
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: [0, 1, 1, 0], y: [-6, 2, 2, 8] }}
+            className={`pointer-events-none absolute bottom-full right-0 font-mono text-xs font-semibold ${change.amount > 0 ? "text-positive" : "text-danger"}`}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: [0, 1, 1, 0], y: [6, -2, -2, -8] }}
             transition={{ duration: 1.8, times: [0, 0.15, 0.75, 1] }}
           >
             {change.amount > 0 ? "+" : "−"}
@@ -128,17 +124,6 @@ export function BalanceChip({ value }: { value: number }) {
           </motion.span>
         )}
       </AnimatePresence>
-      <AnimatePresence>
-        {change && change.amount > 0 && (
-          <motion.span
-            key={`glow-${change.id}`}
-            className="pointer-events-none absolute inset-0 rounded-full shadow-[0_0_24px_rgba(233,180,76,0.9)]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0] }}
-            transition={{ duration: 1.4 }}
-          />
-        )}
-      </AnimatePresence>
-    </div>
+    </span>
   );
 }
