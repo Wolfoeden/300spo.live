@@ -7,9 +7,10 @@ import { SUIT_COLORS } from "@/lib/game/card-race";
 import { cosmetic, formatMultiplier } from "@/lib/game/catalog";
 import { DIFFICULTIES, hitChance } from "@/lib/game/chicken";
 import { Spinner } from "../icons";
-import type { ArenaGame } from "./arena";
+import type { ArenaGame, WalletPanels } from "./arena";
 import { WinBurst } from "./arena-effects";
 import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
+import { HoldPlayButton, Terminal, useAutoRun, useStopWhenHidden, type AutoMode } from "./terminal";
 
 export type ChickenRound = {
   id: number;
@@ -36,6 +37,7 @@ type Props = {
   collect(round: number): Promise<ChickenRound>;
   onSettled(): void;
   onBack(): void;
+  wallet: WalletPanels;
 };
 
 const COCK = "/game/chicken-cock.jpg";
@@ -46,7 +48,7 @@ const subscribeResize = (callback: () => void) => {
 };
 
 /** Chicken: walk the blue cock across the road; collect before a car hits. */
-export function ChickenGame({ game, bets, balance, enabled, load, start, step, collect, onSettled, onBack }: Props) {
+export function ChickenGame({ game, bets, balance, enabled, load, start, step, collect, onSettled, onBack, wallet }: Props) {
   const reduce = useReducedMotion();
   const [config, setConfig] = useState<ChickenState | null>(null);
   const [round, setRound] = useState<ChickenRound | null>(null);
@@ -55,6 +57,8 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [burst, setBurst] = useState<{ id: number; amount: number } | null>(null);
+  // Holding GO keeps the cock walking; it stops with the round (never starts the next bet by itself).
+  const [auto, setAuto] = useState<AutoMode>("off");
   const [liveBalance, setLiveBalance] = useState<number | null>(null);
   const [seenBalance, setSeenBalance] = useState(balance);
   if (balance !== seenBalance) {
@@ -122,7 +126,9 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
       const next = await step(active.id);
       setRound(next);
       settle(next);
+      if (next.status !== "open") setAuto("off");
     } catch (cause) {
+      setAuto("off");
       setError(cause instanceof Error ? cause.message : "The cock could not move.");
     } finally {
       setBusy(false);
@@ -151,6 +157,9 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
   };
 
   const betLocked = open || busy;
+  const stopAuto = useCallback(() => setAuto("off"), []);
+  useStopWhenHidden(auto, stopAuto);
+  useAutoRun(auto, !busy && canGo, () => void go(), 350);
   useGameKeys({
     space: () => canGo && void go(),
     enter: () => canGo && void go(),
@@ -175,92 +184,100 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
 
   return (
     <GameFrame gameId="chicken" payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} info={rules}>
-      <Road
-        lanes={lanes}
-        multipliers={multipliers}
-        position={position}
-        round={shown}
-        reduce={!!reduce}
-        burst={burst && shown?.id === burst.id ? burst : null}
-        onBurstDone={() => setBurst(null)}
-      />
-
-      <div className="grid gap-4 border-t border-line p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_auto] lg:items-end">
-        <BetStepper bets={bets} bet={bet} onChange={setBet} disabled={betLocked} affordable={(amount) => amount <= shownBalance || open} />
-        <fieldset>
-          <legend className="mb-2 flex w-full items-center justify-between gap-2 text-xs text-faint">
-            <span className="flex items-center gap-1.5">
-              Difficulty
-              <Kbd>1</Kbd>–<Kbd>4</Kbd>
-            </span>
-            <span>
-              Chance of a car next lane: <span className="font-semibold text-text">{(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%</span>
-            </span>
-          </legend>
-          <div className="grid grid-cols-4 gap-1 rounded-2xl border border-line bg-ink/60 p-1">
-            {DIFFICULTIES.map((entry) => (
-              <button
-                key={entry.hazards}
-                type="button"
-                onClick={() => chooseDifficulty(entry.hazards)}
-                disabled={open || busy}
-                aria-pressed={hazards === entry.hazards}
-                className={`rounded-xl px-2 py-2 text-xs font-semibold transition disabled:cursor-not-allowed sm:text-sm ${
-                  hazards === entry.hazards ? "bg-gold/20 text-gold-bright" : "text-muted enabled:hover:text-text"
-                }`}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <div className="grid grid-cols-2 gap-2 lg:w-80">
-          <button
-            type="button"
-            onClick={take}
-            disabled={!open || position < 1 || busy}
-            className="flex min-h-14 flex-col items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#f4d675,#c98a2b)] px-3 font-bold leading-tight text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-40"
-          >
-            <span className="flex items-center gap-1.5 text-sm uppercase tracking-wide">
-              Collect <Kbd>C</Kbd>
-            </span>
-            <span className="text-xs tabular-nums">{collectable > 0 ? `${formatTokenAmount(BigInt(collectable))} · ${formatMultiplier(current)}` : "—"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={go}
-            disabled={!canGo}
-            className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#5ee39b,#1f9d5c)] px-3 text-xl font-black uppercase tracking-wide text-[#062915] shadow-[0_10px_30px_-12px_rgba(94,227,155,0.7)] transition enabled:hover:brightness-110 disabled:opacity-40"
-          >
-            {busy ? (
-              <Spinner size={18} />
-            ) : (
-              <>
-                Go <Kbd>Space</Kbd>
-              </>
-            )}
-          </button>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-4 lg:p-4">
+        <div className="min-w-0 lg:self-start lg:overflow-hidden lg:rounded-2xl lg:border lg:border-line">
+          <Road
+            lanes={lanes}
+            multipliers={multipliers}
+            position={position}
+            round={shown}
+            reduce={!!reduce}
+            burst={burst && shown?.id === burst.id ? burst : null}
+            onBurstDone={() => setBurst(null)}
+          />
         </div>
-        {!open && bet > balance && <p className="text-sm text-warning lg:col-span-3">Not enough game balance for this bet.</p>}
-        <AnimatePresence mode="wait">
-          {shown && shown.status !== "open" && (
-            <motion.p
-              key={shown.id}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`rounded-2xl border p-3 text-sm lg:col-span-3 ${
-                shown.status === "collected" ? "border-positive/40 bg-positive/10 text-positive" : "border-danger/30 bg-danger/10 text-danger"
-              }`}
-            >
-              {shown.status === "collected"
-                ? `Collected ${formatTokenAmount(BigInt(shown.payout))} tokens after ${shown.step} lane${shown.step === 1 ? "" : "s"} (${formatMultiplier(multipliers[shown.step - 1])}).`
-                : `A car got the cock on lane ${shown.step}. The ${formatTokenAmount(BigInt(shown.bet))} bet is lost — GO starts a new round.`}
-            </motion.p>
-          )}
-        </AnimatePresence>
-        {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger lg:col-span-3">{error}</p>}
-        {!enabled && <p className="text-sm text-warning lg:col-span-3">Games are paused right now.</p>}
+        <Terminal
+          balance={shownBalance}
+          deposit={wallet.deposit}
+          rewards={wallet.rewards}
+          play={
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="mb-2 flex items-center justify-between gap-2 text-xs text-faint">
+                  <span className="flex items-center gap-1.5">
+                    Difficulty
+                    <Kbd>1</Kbd>–<Kbd>4</Kbd>
+                  </span>
+                  <span>
+                    Car next lane <span className="font-semibold text-text">{(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%</span>
+                  </span>
+                </p>
+                <div className="grid grid-cols-4 gap-1 rounded-2xl border border-line bg-ink/60 p-1">
+                  {DIFFICULTIES.map((entry) => (
+                    <button
+                      key={entry.hazards}
+                      type="button"
+                      onClick={() => chooseDifficulty(entry.hazards)}
+                      disabled={open || busy}
+                      aria-pressed={hazards === entry.hazards}
+                      className={`rounded-xl px-1 py-2 text-xs font-semibold transition disabled:cursor-not-allowed ${
+                        hazards === entry.hazards ? "bg-gold/20 text-gold-bright" : "text-muted enabled:hover:text-text"
+                      }`}
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-end gap-2 lg:grid-cols-1 lg:gap-3">
+                <BetStepper compact bets={bets} bet={bet} onChange={setBet} disabled={betLocked} affordable={(amount) => amount <= shownBalance || open} />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={take}
+                    disabled={!open || position < 1 || busy}
+                    className="flex min-h-14 flex-col items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#f4d675,#c98a2b)] px-2 font-bold leading-tight text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-40"
+                  >
+                    <span className="flex items-center gap-1.5 text-sm uppercase tracking-wide">
+                      Collect <Kbd>C</Kbd>
+                    </span>
+                    <span className="text-xs tabular-nums">{collectable > 0 ? `${formatTokenAmount(BigInt(collectable))} · ${formatMultiplier(current)}` : "—"}</span>
+                  </button>
+                  <HoldPlayButton tone="green" lockable={false} onPlay={() => void go()} auto={auto} onAuto={setAuto} playable={canGo}>
+                    {busy && auto === "off" ? (
+                      <Spinner size={18} />
+                    ) : (
+                      <span className="flex items-center gap-2 text-xl font-black uppercase tracking-wide">
+                        Go <Kbd>Space</Kbd>
+                      </span>
+                    )}
+                  </HoldPlayButton>
+                </div>
+              </div>
+              <p className="text-center text-[0.7rem] text-faint pointer-fine:hidden">Hold GO to keep walking</p>
+              {!open && bet > shownBalance && <p className="text-sm text-warning">Not enough game balance for this bet.</p>}
+              <AnimatePresence mode="wait">
+                {shown && shown.status !== "open" && (
+                  <motion.p
+                    key={shown.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className={`rounded-xl border px-3 py-2 text-sm ${
+                      shown.status === "collected" ? "border-positive/40 bg-positive/10 text-positive" : "border-danger/30 bg-danger/10 text-danger"
+                    }`}
+                  >
+                    {shown.status === "collected"
+                      ? `+${formatTokenAmount(BigInt(shown.payout))} after ${shown.step} lane${shown.step === 1 ? "" : "s"} (${formatMultiplier(multipliers[shown.step - 1])})`
+                      : `Hit on lane ${shown.step} · ${formatTokenAmount(BigInt(shown.bet))} lost`}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
+              {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
+            </div>
+          }
+        />
       </div>
     </GameFrame>
   );

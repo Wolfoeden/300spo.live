@@ -125,6 +125,7 @@ export function BetStepper({
   disabled,
   affordable,
   label = "Bet",
+  compact = false,
 }: {
   bets: Bets;
   bet: number;
@@ -133,27 +134,29 @@ export function BetStepper({
   /** Whether an amount can be paid (4× mode multiplies it by the races picked). */
   affordable(amount: number): boolean;
   label?: string;
+  /** Without the label row and a little lower, for the phone dock. */
+  compact?: boolean;
 }) {
   const lower = stepBet(bets, bet, -1);
   const higher = stepBet(bets, bet, 1);
   const button =
-    "grid size-12 shrink-0 place-items-center rounded-xl border border-line text-2xl leading-none text-text transition enabled:hover:border-gold/50 enabled:hover:text-gold-bright disabled:opacity-30";
+    `grid ${compact ? "size-11" : "size-12"} shrink-0 place-items-center rounded-xl border border-line text-2xl leading-none text-text transition enabled:hover:border-gold/50 enabled:hover:text-gold-bright disabled:opacity-30`;
   return (
     <div>
-      <p className="mb-2 flex items-center justify-between text-xs text-faint">
+      <p className={`mb-2 items-center justify-between text-xs text-faint ${compact ? "hidden lg:flex" : "flex"}`}>
         {label}
         <span className="flex gap-1">
           <Kbd>−</Kbd>
           <Kbd>+</Kbd>
         </span>
       </p>
-      <div className="flex items-center gap-2 rounded-2xl border border-line bg-ink/60 p-1.5">
+      <div className={`flex items-center gap-2 rounded-2xl border border-line bg-ink/60 ${compact ? "p-1" : "p-1.5"}`} aria-label={label} role="group">
         <button type="button" aria-label="Lower bet" className={button} onClick={() => onChange(lower)} disabled={disabled || bet <= bets.min}>
           −
         </button>
         <p className="min-w-0 flex-1 text-center" aria-live="polite">
-          <span className={`text-2xl font-semibold tabular-nums ${affordable(bet) ? "text-text" : "text-danger"}`}>{formatTokenAmount(BigInt(bet))}</span>
-          <span className="ml-1.5 text-xs text-muted">300</span>
+          <span className={`${compact ? "text-xl" : "text-2xl"} font-semibold tabular-nums ${affordable(bet) ? "text-text" : "text-danger"}`}>{formatTokenAmount(BigInt(bet))}</span>
+          {!compact && <span className="ml-1.5 text-xs text-muted">300</span>}
         </p>
         <button
           type="button"

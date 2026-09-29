@@ -8,6 +8,8 @@ import { Spinner } from "../icons";
 import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RacePreview } from "./card-race-stage";
 import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
+import { AutoToggle, HoldPlayButton, Terminal, useAutoRun, useStopWhenHidden, type AutoMode } from "./terminal";
+import { SUIT_SYMBOLS } from "@/lib/game/card-race";
 
 export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
 export type PlayResult = {
@@ -36,22 +38,30 @@ type Props = {
   onBack(): void;
   /** Extra controls in the game header (the 1×/4× switch of the horse race). */
   toolbar?: React.ReactNode;
+  /** The wallet tabs of the terminal. */
+  wallet: WalletPanels;
 };
+
+export type WalletPanels = { deposit: React.ReactNode; rewards: React.ReactNode };
 
 const ANIMATION_MS: Partial<Record<GameId, number>> = { "coin-flip": 1900, "xerxes-vs-robot": 3600 };
 
 const animationMs = (result: PlayResult) => (result.race ? raceTimeline(raceEvents(result.race)).total : (ANIMATION_MS[result.game as GameId] ?? 2000));
 
-/** One game at a time: its stage on the left, pick, bet and result on the right. */
-export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersion, onSettled, onBack, toolbar }: Props) {
+/** One game at a time: its stage, and the terminal with pick, bet, play and the wallet. */
+export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersion, onSettled, onBack, toolbar, wallet }: Props) {
   const [bet, setBet] = useState(bets.min);
   const [choice, setChoice] = useState<number | null>(null);
+  const [lastChoice, setLastChoice] = useState<number | null>(null);
   const [phase, setPhase] = useState<"idle" | "waiting" | "animating" | "done">("idle");
   const [result, setResult] = useState<PlayResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<RacePreview | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [playedNonce, setPlayedNonce] = useState<number | null>(null);
   const [burst, setBurst] = useState<{ roundId: number; amount: number } | null>(null);
+  const [auto, setAuto] = useState<AutoMode>("off");
+  const [autoNote, setAutoNote] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -92,11 +102,15 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
   const busy = phase === "waiting" || phase === "animating";
   const odds = isRace ? (preview?.odds ?? null) : null;
   const pickOdds = (index: number) => (isRace ? (odds?.[index] ?? 0) : game.payoutBps);
-  const canPlay = enabled && choice !== null && bet <= balance && !busy && (!isRace || (!!preview && pickOdds(choice) > 0));
+  // A race can only start on a deal that has not been played yet.
+  const fresh = !isRace || (!!preview && preview.nonce !== playedNonce);
+  // The balance the next bet is paid from: the last result is newer than the page's refresh.
+  const available = phase === "done" && result ? result.balance : balance;
+  const canPlay = enabled && choice !== null && bet <= available && !busy && fresh && pickOdds(choice) > 0;
   // After a race the board keeps the finished race until the player picks for the next one.
   const showResult = phase !== "idle";
   // The in-game balance drops by the bet at once and shows the payout only when the round has played out.
-  const shownBalance = busy ? balance - bet : phase === "done" && result ? result.balance : balance;
+  const shownBalance = busy ? balance - bet : available;
 
   const pick = (index: number) => {
     if (busy) return;
@@ -105,26 +119,57 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
     if (isRace && phase === "done") setPhase("idle");
   };
 
-  const start = async () => {
-    if (choice === null) return;
+  const start = async (pickIndex: number | null = choice, fast = false) => {
+    if (pickIndex === null) return;
+    setChoice(pickIndex);
+    setLastChoice(pickIndex);
     setError(null);
     setResult(null);
     setBurst(null);
     setPhase("waiting");
+    if (isRace && preview) setPlayedNonce(preview.nonce);
     try {
-      const outcome = await play(game.id, bet, choice, isRace && preview ? { nonce: preview.nonce, serverSeedHash: preview.serverSeedHash } : undefined);
+      const outcome = await play(game.id, bet, pickIndex, isRace && preview ? { nonce: preview.nonce, serverSeedHash: preview.serverSeedHash } : undefined);
       setResult(outcome);
       setPhase("animating");
       // On phones the stage sits above the controls; bring it into view for the show.
       const box = stage.current?.getBoundingClientRect();
-      if (box && (box.top < 0 || box.bottom > window.innerHeight)) stage.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-      timer.current = window.setTimeout(() => finish(outcome), reduce ? 200 : animationMs(outcome));
+      if (!fast && box && (box.top < 0 || box.bottom > window.innerHeight)) stage.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      // Auto play keeps races short: they jump to the finish after a moment.
+      const duration = reduce ? 200 : fast ? Math.min(1500, animationMs(outcome)) : animationMs(outcome);
+      timer.current = window.setTimeout(() => finish(outcome), duration);
     } catch (cause) {
       setPhase("idle");
+      setAuto("off");
       setError(cause instanceof Error ? cause.message : "The bet could not be placed.");
       if (isRace) setPreviewKey((key) => key + 1);
     }
   };
+
+  // Auto play repeats the last pick; it stops when that pick cannot be played.
+  const changeAuto = useCallback((mode: AutoMode) => {
+    setAuto(mode);
+    setAutoNote(null);
+  }, []);
+  const stopAuto = useCallback(() => setAuto("off"), []);
+  useStopWhenHidden(auto, stopAuto);
+  const autoPick = choice ?? lastChoice;
+  useAutoRun(auto, enabled && !busy && fresh, () => {
+    const note =
+      autoPick === null
+        ? `Pick ${isRace ? "an ace" : "a side"} first.`
+        : bet > available
+          ? "Not enough game balance."
+          : pickOdds(autoPick) === 0
+            ? `${copy.choices[autoPick]} cannot win this deal.`
+            : null;
+    if (note) {
+      setAuto("off");
+      setAutoNote(`Auto stopped: ${note}`);
+      return;
+    }
+    void start(autoPick, true);
+  });
 
   const multiplier = (index: number) => formatMultiplier(pickOdds(index));
   const options = copy.choices.map((_, index) => index).filter((index) => !isRace || pickOdds(index) > 0);
@@ -135,6 +180,7 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
   };
   const canSkip = phase === "animating" && isRace && !!result;
   const skip = () => result && finish(result);
+  const canAuto = enabled && (choice ?? lastChoice) !== null;
 
   useGameKeys({
     ...Object.fromEntries(copy.choices.map((_, index) => [String(index + 1), () => (!isRace || pickOdds(index) > 0) && pick(index)])),
@@ -147,88 +193,101 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
     enter: () => canPlay && void start(),
     space: () => canPlay && void start(),
     s: canSkip && skip,
+    a: () => (auto !== "off" ? changeAuto("off") : canAuto && changeAuto("lock")),
   });
+
+  const label =
+    choice === null
+      ? isRace
+        ? "Pick an ace"
+        : "Pick a side"
+      : bet > available
+        ? "Not enough balance"
+        : isRace
+          ? `Start · ${SUIT_SYMBOLS[choice]} ${odds ? multiplier(choice) : ""}`
+          : `Flip · ${copy.choices[choice]}`;
+
+  const playPanel = (
+    <div className="flex flex-col gap-3">
+      {!isRace && (
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Your pick">
+          {copy.choices.map((name, index) => (
+            <button
+              key={name}
+              onClick={() => pick(index)}
+              disabled={busy}
+              aria-pressed={choice === index}
+              className={`flex items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-left text-base font-semibold transition disabled:opacity-40 lg:py-4 ${
+                choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted enabled:hover:border-gold/40 enabled:hover:text-text"
+              }`}
+            >
+              {name}
+              <Kbd>{index + 1}</Kbd>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-end gap-2 lg:grid-cols-1 lg:gap-3">
+        <BetStepper compact bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount <= available} />
+        <div className="flex gap-2">
+          <HoldPlayButton className="flex-1" onPlay={() => void start()} auto={auto} onAuto={changeAuto} playable={canPlay || (canAuto && !busy)}>
+            {phase === "waiting" && <Spinner size={16} />}
+            {label}
+            {canPlay && <Kbd>Enter</Kbd>}
+          </HoldPlayButton>
+          <span className="hidden lg:contents">
+            <AutoToggle auto={auto} onAuto={changeAuto} disabled={!canAuto} />
+          </span>
+        </div>
+      </div>
+      <p className="text-center text-[0.7rem] text-faint pointer-fine:hidden">Hold for auto play · swipe up to lock it</p>
+      {canSkip && auto === "off" && (
+        <button className="inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
+          Skip to the finish <Kbd>S</Kbd>
+        </button>
+      )}
+      <AnimatePresence mode="wait">
+        {phase === "done" && result && (
+          <motion.p
+            key={result.roundId}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className={`rounded-xl border px-3 py-2 text-sm font-semibold ${result.win ? "border-positive/40 bg-positive/10 text-positive" : "border-line bg-white/[0.03] text-muted"}`}
+          >
+            {result.win ? `+${formatTokenAmount(BigInt(result.payout))} · ${copy.choices[result.choice]} won` : `${copy.choices[result.outcome]} won`}
+          </motion.p>
+        )}
+      </AnimatePresence>
+      {autoNote && <p className="text-xs text-warning">{autoNote}</p>}
+      {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
+      {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
+    </div>
+  );
 
   return (
     <GameFrame gameId={game.id as GameId} payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} toolbar={toolbar}>
-        <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
-          <div ref={stage} className="relative min-h-[18rem]">
-            <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
-            {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
-            {game.id === "card-race" && (
-              <CardRaceStage
-                deal={preview}
-                result={showResult && result?.race ? { roundId: result.roundId, outcome: result.outcome, race: result.race } : null}
-                instant={phase === "done"}
-                picked={choice}
-                onPick={pick}
-                disabled={busy}
-                canStart={canPlay}
-                bet={bet}
-                onStart={() => void start()}
-              />
-            )}
-            {game.id === "xerxes-vs-robot" && <DuelStage result={showResult ? result : null} />}
-          </div>
-
-          <div className="flex flex-col gap-4 lg:pt-2">
-            {!isRace && (
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Your pick">
-                {copy.choices.map((label, index) => (
-                  <button
-                    key={label}
-                    onClick={() => pick(index)}
-                    disabled={busy}
-                    aria-pressed={choice === index}
-                    className={`flex items-center justify-between gap-2 rounded-2xl border px-4 py-4 text-left text-base font-semibold transition disabled:opacity-40 ${
-                      choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted enabled:hover:border-gold/40 enabled:hover:text-text"
-                    }`}
-                  >
-                    {label}
-                    <Kbd>{index + 1}</Kbd>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <BetStepper bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount <= balance} />
-
-            <button className="btn btn-gold w-full !py-4 text-base" onClick={start} disabled={!canPlay}>
-              {phase === "waiting" && <Spinner size={16} />}
-              {choice === null
-                ? isRace
-                  ? "Pick an ace"
-                  : "Pick a side"
-                : bet > balance
-                  ? "Not enough game balance"
-                  : isRace
-                    ? `Start race · ${copy.choices[choice]}${odds ? ` ${multiplier(choice)}` : ""}`
-                    : `Flip · ${copy.choices[choice]}`}
-              {canPlay && <Kbd>Enter</Kbd>}
-            </button>
-            {canSkip && (
-              <button className="-mt-2 inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
-                Skip to the finish <Kbd>S</Kbd>
-              </button>
-            )}
-
-            <AnimatePresence mode="wait">
-              {phase === "done" && result && (
-                <motion.p
-                  key={result.roundId}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className={`rounded-2xl border p-4 text-lg font-semibold ${result.win ? "border-positive/40 bg-positive/10 text-positive" : "border-line bg-white/[0.03] text-text"}`}
-                >
-                  {result.win ? `+${formatTokenAmount(BigInt(result.payout))} · ${copy.choices[result.choice]} won` : `${copy.choices[result.outcome]} won`}
-                </motion.p>
-              )}
-            </AnimatePresence>
-            {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
-            {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
-          </div>
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div ref={stage} className="relative min-h-[18rem]">
+          <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
+          {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
+          {game.id === "card-race" && (
+            <CardRaceStage
+              deal={preview}
+              result={showResult && result?.race ? { roundId: result.roundId, outcome: result.outcome, race: result.race } : null}
+              instant={phase === "done"}
+              picked={choice}
+              onPick={pick}
+              disabled={busy}
+              canStart={canPlay && auto === "off"}
+              bet={bet}
+              onStart={() => void start()}
+            />
+          )}
+          {game.id === "xerxes-vs-robot" && <DuelStage result={showResult ? result : null} />}
         </div>
+        <Terminal play={playPanel} deposit={wallet.deposit} rewards={wallet.rewards} balance={shownBalance} />
+      </div>
     </GameFrame>
   );
 }
