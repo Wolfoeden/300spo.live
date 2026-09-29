@@ -33,9 +33,10 @@ const END_MS = 700;
 /**
  * Row heights: a board fits both its width (per = rows across) and its height
  * (rows = row heights stacked, fixed = pixels of text around them), within min and max.
+ * Small boards accept narrow lanes, so on phones their rows grow with the height.
  */
 const FULL_ROW = { min: 18, max: 62, per: 8.4, rows: 10.9, fixed: 76 };
-const COMPACT_ROW = { min: 12, max: 42, per: 8.5, rows: 9.2, fixed: 18 };
+const COMPACT_ROW = { min: 12, max: 42, per: 6.2, rows: 9.2, fixed: 18 };
 
 /** When each race event plays (ms after the race starts) and how long the whole race takes. */
 export const raceTimeline = (events: RaceEvent[]) => {
@@ -60,16 +61,34 @@ type Props = {
   onStart?(): void;
   /** Small board for the 4× grid: no card carousel, rows scale with the width. */
   compact?: boolean;
+  /** Changing this number plays the finished race again (the 4× replay button). */
+  replay?: number;
+  /** Offer the replay button under a finished race (off while auto play runs). */
+  allowReplay?: boolean;
 };
 
-export function CardRaceStage({ deal, result, instant, picked, onPick, disabled, canStart = false, bet = 0, onStart, compact = false }: Props) {
+export function CardRaceStage({ deal, result, instant, picked, onPick, disabled, canStart = false, bet = 0, onStart, compact = false, replay = 0, allowReplay = true }: Props) {
   const reduce = useReducedMotion();
   const events = useMemo(() => (result ? raceEvents(result.race) : []), [result]);
   const [cursor, setCursor] = useState(0);
   const [round, setRound] = useState<number | null>(null);
+  // A replay runs the finished race again from the first card; nothing is bet.
+  const [replaying, setReplaying] = useState(false);
+  const [replayRun, setReplayRun] = useState(0);
+  const [seenReplay, setSeenReplay] = useState(replay);
   if ((result?.roundId ?? null) !== round) {
     setRound(result?.roundId ?? null);
     setCursor(0);
+    setReplaying(false);
+  }
+  const startReplay = () => {
+    setReplaying(true);
+    setCursor(0);
+    setReplayRun((run) => run + 1);
+  };
+  if (replay !== seenReplay) {
+    setSeenReplay(replay);
+    if (result) startReplay();
   }
 
   // The board sizes its rows from the room it gets, so it always fits and grows with the screen.
@@ -88,9 +107,6 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
     observer.observe(room);
     return () => observer.disconnect();
   }, [bounds]);
-  const tiny = row < 26;
-  // Below this the card art is unreadable: track cards become suit tiles.
-  const small = compact || row < 30;
   const deck = { width: Math.round(row * 1.36), height: Math.round(row * 1.9) };
   const trailCard = { width: Math.round(row * 1.0), height: Math.round(row * 1.4) };
 
@@ -101,13 +117,14 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
   }, []);
 
   useEffect(() => {
-    if (!result || instant || reduce) return;
-    const { at } = raceTimeline(events);
+    if (!result || reduce || (instant && !replaying)) return;
+    const { at, total } = raceTimeline(events);
     const timers = at.map((time, index) => window.setTimeout(() => setCursor(index + 1), time));
+    if (replaying) timers.push(window.setTimeout(() => setReplaying(false), total));
     return () => timers.forEach((id) => window.clearTimeout(id));
-  }, [result, events, instant, reduce]);
+  }, [result, events, instant, reduce, replaying, replayRun]);
 
-  const shown = result && (instant || reduce) ? events.length : cursor;
+  const shown = result && (instant || reduce) && !replaying ? events.length : cursor;
   const track = result?.race.track ?? deal?.track ?? null;
   const odds = result?.race.odds ?? deal?.odds ?? null;
   const positions = positionsAfter(events, shown);
@@ -172,7 +189,8 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
               </AnimatePresence>
             </div>
           </div>
-          <p className="min-h-5 text-sm text-muted" aria-live="polite">
+          <div className="flex min-h-5 items-center justify-between gap-3">
+          <p className="text-sm text-muted" aria-live="polite">
             {!result
               ? ""
               : finished
@@ -183,6 +201,26 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                     ? `Card ${drawn}: ${SUITS[lastDraw.suit]} moves up`
                     : "Shuffling…"}
           </p>
+          <AnimatePresence>
+            {allowReplay && finished && instant && !replaying && !reduce && (
+              <motion.button
+                type="button"
+                onClick={startReplay}
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold-bright transition hover:bg-gold/20"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ delay: 1.2 }}
+              >
+                <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+                Replay
+              </motion.button>
+            )}
+          </AnimatePresence>
+          </div>
         </>
       )}
 
@@ -206,15 +244,12 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                   transition={{ duration: 0.4 }}
                   className={`rounded-md ${level <= reached ? "ring-2 ring-gold/70" : ""}`}
                 >
-                  {small ? (
-                    <MiniCard card={track[level - 1]} row={row} dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
-                  ) : (
-                    <FaceCard
-                      card={track[level - 1]}
-                      size={{ width: Math.round(row * 1.24), height: Math.round(row * 0.84) }}
-                      dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)}
-                    />
-                  )}
+                  <SidewaysCard
+                    card={track[level - 1]}
+                    width={Math.round(row * (compact ? 1.18 : 1.24))}
+                    height={Math.round(row * (compact ? 0.8 : 0.84))}
+                    dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)}
+                  />
                 </motion.div>
               ) : (
                 <span className="rounded-md bg-white/[0.04]" style={{ height: row * 0.8, width: row * 1.2 }} />
@@ -224,7 +259,7 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
           <div className="grid place-items-center" style={{ height: row }}>
             {compact && lastDraw ? (
               <motion.div key={lastDraw.card} initial={{ rotateY: 90 }} animate={{ rotateY: 0 }} transition={{ duration: 0.18 }}>
-                <MiniCard card={lastDraw.card} row={row} upright />
+                <FaceCard card={lastDraw.card} size={{ width: Math.round(row * 0.68), height: Math.round(row * 0.95) }} />
               </motion.div>
             ) : (
               <span className="font-mono uppercase tracking-[0.14em] text-faint" style={{ fontSize: Math.max(8, row * 0.24) }}>
@@ -265,7 +300,7 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                   animate={{ y: -position * row }}
                   transition={{ type: "spring", stiffness: 420, damping: 30 }}
                 >
-                  {tiny ? <AceChip suit={suit} row={row} glow={winner} /> : <AceCard suit={suit} glow={winner} row={row} />}
+                  <AceCard suit={suit} glow={winner} row={row} />
                   <AnimatePresence>
                     {stepBack && (
                       <motion.span
@@ -365,7 +400,7 @@ export function FaceCard({ card, size, dim }: { card: number; size?: { width: nu
       <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover" />
       <span
         className="absolute left-0.5 top-0.5 flex items-center gap-0.5 rounded bg-black/80 px-1 py-0.5 font-semibold leading-none"
-        style={{ fontSize: size ? Math.max(10, Math.min(14, size.height * 0.3)) : 12 }}
+        style={{ fontSize: size ? Math.max(7, Math.min(14, size.height * 0.28)) : 12 }}
       >
         {rank}
         <span style={{ color: SUIT_COLORS[suit] }}>
@@ -376,24 +411,13 @@ export function FaceCard({ card, size, dim }: { card: number; size?: { width: nu
   );
 }
 
-/** Small boards: the card as a suit-coloured tile with rank and symbol (art would be unreadable). */
-function MiniCard({ card, row, dim, upright }: { card: number; row: number; dim?: boolean; upright?: boolean }) {
-  const suit = cardSuit(card);
-  const [width, height] = upright ? [row * 0.72, row * 0.92] : [row * 1.18, row * 0.78];
+/** A track card lies on its side: the upright NFT card turned a quarter, so the art is whole. */
+function SidewaysCard({ card, width, height, dim }: { card: number; width: number; height: number; dim?: boolean }) {
   return (
-    <span
-      className={`flex items-center justify-center gap-px rounded font-semibold leading-none text-white shadow-sm shadow-black/40 ${dim ? "opacity-40" : ""}`}
-      style={{
-        width,
-        height,
-        fontSize: Math.max(8, row * 0.36),
-        background: `linear-gradient(160deg, ${tint(suit, 0.95)}, ${tint(suit, 0.55)})`,
-        border: `1px solid ${tint(suit, 1)}`,
-        flexDirection: upright ? "column" : "row",
-      }}
-    >
-      <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">{cardRank(card)}</span>
-      <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">{SUIT_SYMBOLS[suit]}</span>
+    <span className="grid place-items-center" style={{ width, height }}>
+      <span className="-rotate-90">
+        <FaceCard card={card} size={{ width: height, height: width }} dim={dim} />
+      </span>
     </span>
   );
 }
@@ -414,18 +438,6 @@ function AceCard({ suit, glow, row }: { suit: number; glow: boolean; row: number
         <span className="text-gold-bright">A</span>
         <span style={{ color: SUIT_COLORS[suit] }}>{SUIT_SYMBOLS[suit]}</span>
       </span>
-    </span>
-  );
-}
-
-/** The ace on tiny boards: gold-rimmed chip in the suit colour. */
-function AceChip({ suit, row, glow }: { suit: number; row: number; glow: boolean }) {
-  return (
-    <span
-      className={`grid place-items-center rounded-md border border-gold-bright font-bold leading-none text-white ${glow ? "shadow-[0_0_16px_rgba(233,180,76,0.95)]" : ""}`}
-      style={{ height: row * 0.86, width: row * 0.86, fontSize: Math.max(9, row * 0.5), background: `linear-gradient(160deg, ${tint(suit, 1)}, ${tint(suit, 0.5)})` }}
-    >
-      {SUIT_SYMBOLS[suit]}
     </span>
   );
 }
