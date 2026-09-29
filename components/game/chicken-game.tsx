@@ -9,7 +9,7 @@ import { DIFFICULTIES, hitChance } from "@/lib/game/chicken";
 import { Spinner } from "../icons";
 import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
-import { BetChips, GameFrame } from "./game-frame";
+import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
 
 export type ChickenRound = {
   id: number;
@@ -150,6 +150,19 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
     setBurst(null);
   };
 
+  const betLocked = open || busy;
+  useGameKeys({
+    space: () => canGo && void go(),
+    enter: () => canGo && void go(),
+    right: () => canGo && void go(),
+    c: () => open && position > 0 && !busy && void take(),
+    ...Object.fromEntries(DIFFICULTIES.map((entry, index) => [String(index + 1), () => chooseDifficulty(entry.hazards)])),
+    up: () => !betLocked && setBet(stepBet(bets, bet, 1)),
+    down: () => !betLocked && setBet(stepBet(bets, bet, -1)),
+    plus: () => !betLocked && setBet(stepBet(bets, bet, 1)),
+    minus: () => !betLocked && setBet(stepBet(bets, bet, -1)),
+  });
+
   const rules = (
     <>
       <span className="block">Each GO moves the blue cock one lane further and raises the multiplier. Collect whenever you like — if a car hits him, the bet is lost.</span>
@@ -173,13 +186,13 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
       />
 
       <div className="grid gap-4 border-t border-line p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_auto] lg:items-end">
-        <fieldset disabled={open || busy}>
-          <legend className="mb-2 text-xs text-faint">Bet (tokens)</legend>
-          <BetChips bets={bets} bet={bet} onChange={setBet} disabled={open || busy} affordable={(amount) => amount <= balance} />
-        </fieldset>
+        <BetStepper bets={bets} bet={bet} onChange={setBet} disabled={betLocked} affordable={(amount) => amount <= shownBalance || open} />
         <fieldset>
           <legend className="mb-2 flex w-full items-center justify-between gap-2 text-xs text-faint">
-            <span>Difficulty</span>
+            <span className="flex items-center gap-1.5">
+              Difficulty
+              <Kbd>1</Kbd>–<Kbd>4</Kbd>
+            </span>
             <span>
               Chance of a car next lane: <span className="font-semibold text-text">{(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%</span>
             </span>
@@ -208,7 +221,9 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
             disabled={!open || position < 1 || busy}
             className="flex min-h-14 flex-col items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#f4d675,#c98a2b)] px-3 font-bold leading-tight text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-40"
           >
-            <span className="text-sm uppercase tracking-wide">Collect</span>
+            <span className="flex items-center gap-1.5 text-sm uppercase tracking-wide">
+              Collect <Kbd>C</Kbd>
+            </span>
             <span className="text-xs tabular-nums">{collectable > 0 ? `${formatTokenAmount(BigInt(collectable))} · ${formatMultiplier(current)}` : "—"}</span>
           </button>
           <button
@@ -217,7 +232,13 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
             disabled={!canGo}
             className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#5ee39b,#1f9d5c)] px-3 text-xl font-black uppercase tracking-wide text-[#062915] shadow-[0_10px_30px_-12px_rgba(94,227,155,0.7)] transition enabled:hover:brightness-110 disabled:opacity-40"
           >
-            {busy ? <Spinner size={18} /> : "Go"}
+            {busy ? (
+              <Spinner size={18} />
+            ) : (
+              <>
+                Go <Kbd>Space</Kbd>
+              </>
+            )}
           </button>
         </div>
         {!open && bet > balance && <p className="text-sm text-warning lg:col-span-3">Not enough game balance for this bet.</p>}
@@ -266,7 +287,7 @@ function Road({
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const narrow = useSyncExternalStore(subscribeResize, () => window.innerWidth < 640, () => false);
-  const lane = narrow ? 76 : 104;
+  const lane = narrow ? 84 : 124;
 
   const lost = round?.status === "lost";
   const crashLane = lost ? round.step : null;
@@ -284,7 +305,7 @@ function Road({
   return (
     <div ref={scroller} className="relative overflow-x-auto overscroll-x-contain [scrollbar-width:thin]">
       <div
-        className="relative h-64 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)] sm:h-80"
+        className="relative h-72 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)] sm:h-96"
         style={{ width: sidewalk * 2 + lanes * lane, minWidth: "100%" }}
       >
         {/* start sidewalk with the 300 coin */}

@@ -4,11 +4,10 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_COPY, cosmetic, formatMultiplier, type GameId } from "@/lib/game/catalog";
 import { formatTokenAmount } from "@/lib/format";
-import { SUIT_COLORS, SUIT_SYMBOLS } from "@/lib/game/card-race";
 import { Spinner } from "../icons";
 import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RacePreview } from "./card-race-stage";
-import { BetChips, GameFrame } from "./game-frame";
+import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
 
 export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
 export type PlayResult = {
@@ -128,10 +127,31 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
   };
 
   const multiplier = (index: number) => formatMultiplier(pickOdds(index));
+  const options = copy.choices.map((_, index) => index).filter((index) => !isRace || pickOdds(index) > 0);
+  const cycle = (direction: 1 | -1) => {
+    if (!options.length) return;
+    const at = choice === null ? (direction === 1 ? -1 : 0) : options.indexOf(choice);
+    pick(options[(at + direction + options.length) % options.length]);
+  };
+  const canSkip = phase === "animating" && isRace && !!result;
+  const skip = () => result && finish(result);
+
+  useGameKeys({
+    ...Object.fromEntries(copy.choices.map((_, index) => [String(index + 1), () => (!isRace || pickOdds(index) > 0) && pick(index)])),
+    left: () => cycle(-1),
+    right: () => cycle(1),
+    up: () => !busy && setBet(stepBet(bets, bet, 1)),
+    down: () => !busy && setBet(stepBet(bets, bet, -1)),
+    plus: () => !busy && setBet(stepBet(bets, bet, 1)),
+    minus: () => !busy && setBet(stepBet(bets, bet, -1)),
+    enter: () => canPlay && void start(),
+    space: () => canPlay && void start(),
+    s: canSkip && skip,
+  });
 
   return (
     <GameFrame gameId={game.id as GameId} payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} toolbar={toolbar}>
-        <div className="grid grid-cols-1 gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
           <div ref={stage} className="relative min-h-[18rem]">
             <AnimatePresence>{burst && <WinBurst key={burst.roundId} amount={burst.amount} onDone={() => setBurst(null)} />}</AnimatePresence>
             {game.id === "coin-flip" && <CoinStage result={showResult ? result : null} />}
@@ -151,71 +171,58 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
             {game.id === "xerxes-vs-robot" && <DuelStage result={showResult ? result : null} />}
           </div>
 
-          <div className="flex flex-col gap-5">
-            <fieldset>
-              <legend className="mb-2 text-xs text-faint">Your pick</legend>
-              <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-4 lg:pt-2">
+            {!isRace && (
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Your pick">
                 {copy.choices.map((label, index) => (
                   <button
                     key={label}
                     onClick={() => pick(index)}
-                    disabled={busy || (isRace && pickOdds(index) === 0)}
+                    disabled={busy}
                     aria-pressed={choice === index}
-                    className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition disabled:opacity-40 ${
+                    className={`flex items-center justify-between gap-2 rounded-2xl border px-4 py-4 text-left text-base font-semibold transition disabled:opacity-40 ${
                       choice === index ? "border-gold bg-gold/10 text-text" : "border-line text-muted enabled:hover:border-gold/40 enabled:hover:text-text"
                     }`}
                   >
-                    {isRace && (
-                      <span className="text-base leading-none" style={{ color: SUIT_COLORS[index] }}>
-                        {SUIT_SYMBOLS[index]}
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {isRace && <span className="font-mono text-xs text-gold-bright">{odds ? (pickOdds(index) ? multiplier(index) : "—") : "…"}</span>}
+                    {label}
+                    <Kbd>{index + 1}</Kbd>
                   </button>
                 ))}
               </div>
-            </fieldset>
+            )}
 
-            <fieldset>
-              <legend className="mb-2 text-xs text-faint">Bet (tokens)</legend>
-              <BetChips bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount <= balance} />
-            </fieldset>
+            <BetStepper bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount <= balance} />
 
-            <button className="btn btn-gold w-full" onClick={start} disabled={!canPlay}>
+            <button className="btn btn-gold w-full !py-4 text-base" onClick={start} disabled={!canPlay}>
               {phase === "waiting" && <Spinner size={16} />}
               {choice === null
-                ? "Pick a winner first"
+                ? isRace
+                  ? "Pick an ace"
+                  : "Pick a side"
                 : bet > balance
                   ? "Not enough game balance"
-                  : `Bet ${formatTokenAmount(BigInt(bet))} on ${copy.choices[choice]}${isRace && odds ? ` · ${multiplier(choice)}` : ""}`}
+                  : isRace
+                    ? `Start race · ${copy.choices[choice]}${odds ? ` ${multiplier(choice)}` : ""}`
+                    : `Flip · ${copy.choices[choice]}`}
+              {canPlay && <Kbd>Enter</Kbd>}
             </button>
-            {phase === "animating" && isRace && (
-              <button className="-mt-3 self-center text-xs text-faint underline-offset-4 hover:text-text hover:underline" onClick={() => result && finish(result)}>
-                Skip to the finish
+            {canSkip && (
+              <button className="-mt-2 inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
+                Skip to the finish <Kbd>S</Kbd>
               </button>
             )}
 
             <AnimatePresence mode="wait">
               {phase === "done" && result && (
-                <motion.div
+                <motion.p
                   key={result.roundId}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className={`rounded-2xl border p-4 ${result.win ? "border-positive/40 bg-positive/10" : "border-line bg-white/[0.03]"}`}
+                  className={`rounded-2xl border p-4 text-lg font-semibold ${result.win ? "border-positive/40 bg-positive/10 text-positive" : "border-line bg-white/[0.03] text-text"}`}
                 >
-                  <p className={`text-lg font-semibold ${result.win ? "text-positive" : "text-text"}`}>
-                    {result.win ? `You won ${formatTokenAmount(BigInt(result.payout))} tokens!` : `${copy.choices[result.outcome]} wins.`}
-                  </p>
-                  <p className="text-sm text-muted">
-                    {result.win
-                      ? `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} paid ${formatMultiplier(result.race ? result.race.odds[result.choice] : game.payoutBps)}.`
-                      : `Your ${formatTokenAmount(BigInt(result.bet))} bet on ${copy.choices[result.choice]} is gone.`}{" "}
-                    Balance: {formatTokenAmount(BigInt(result.balance))}.
-                  </p>
-                  {isRace && <p className="mt-1 text-xs text-faint">Pick an ace to deal the next race.</p>}
-                </motion.div>
+                  {result.win ? `+${formatTokenAmount(BigInt(result.payout))} · ${copy.choices[result.choice]} won` : `${copy.choices[result.outcome]} won`}
+                </motion.p>
               )}
             </AnimatePresence>
             {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
@@ -239,7 +246,7 @@ function CoinStage({ result }: { result: PlayResult | null }) {
   return (
     <div className="grid h-full place-items-center py-6 [perspective:1000px]">
       <motion.div
-        className="relative size-52 sm:size-60"
+        className="relative size-56 sm:size-72"
         style={{ transformStyle: "preserve-3d" }}
         animate={{ rotateY: rotation }}
         transition={{ duration: 1.8, ease: [0.2, 0.75, 0.25, 1] }}

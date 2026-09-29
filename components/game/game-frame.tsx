@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { formatTokenAmount } from "@/lib/format";
 import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { GAME_COPY, formatMultiplier, type GameId } from "@/lib/game/catalog";
@@ -28,7 +29,13 @@ export function GameFrame({
   const copy = GAME_COPY[gameId];
   const race = gameId === "card-race";
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-line bg-night">
+    <section
+      className="relative overflow-hidden rounded-3xl border border-line bg-night"
+      onPointerUp={(event) => {
+        // A click with mouse or finger leaves focus on the button, which would swallow Enter and Space.
+        if (event.target instanceof Element && event.target.closest("button")) window.setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
+      }}
+    >
       <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-50" />
       <div className="relative">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-line px-2 py-2 sm:px-3">
@@ -96,39 +103,108 @@ export function ModeSwitch({ quad, onChange, disabled }: { quad: boolean; onChan
   );
 }
 
-/** Bet chips from the minimum to the maximum in the configured steps. */
-export function BetChips({
+/** A keyboard hint, shown only where there is a mouse (and so, most likely, a keyboard). */
+export function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="hidden min-w-5 items-center justify-center rounded-md border border-current/30 px-1 font-mono text-[0.62rem] font-semibold leading-4 opacity-70 pointer-fine:inline-flex">
+      {children}
+    </kbd>
+  );
+}
+
+export type Bets = { min: number; max: number; step: number };
+
+/** The next bet up (+1) or down (-1), kept inside the limits. */
+export const stepBet = (bets: Bets, bet: number, direction: 1 | -1) => Math.min(bets.max, Math.max(bets.min, bet + direction * bets.step));
+
+/** The bet as one number with − and +; the keyboard uses the same steps. */
+export function BetStepper({
   bets,
   bet,
   onChange,
   disabled,
   affordable,
+  label = "Bet",
 }: {
-  bets: { min: number; max: number; step: number };
+  bets: Bets;
   bet: number;
   onChange(bet: number): void;
   disabled: boolean;
-  /** Whether a chip's amount can be paid (4× mode multiplies it by the races picked). */
+  /** Whether an amount can be paid (4× mode multiplies it by the races picked). */
   affordable(amount: number): boolean;
+  label?: string;
 }) {
-  const amounts: number[] = [];
-  for (let amount = bets.min; amount <= bets.max; amount += bets.step) amounts.push(amount);
+  const lower = stepBet(bets, bet, -1);
+  const higher = stepBet(bets, bet, 1);
+  const button =
+    "grid size-12 shrink-0 place-items-center rounded-xl border border-line text-2xl leading-none text-text transition enabled:hover:border-gold/50 enabled:hover:text-gold-bright disabled:opacity-30";
   return (
-    <div className="flex flex-wrap gap-2">
-      {amounts.map((amount) => (
-        <button
-          key={amount}
-          type="button"
-          onClick={() => onChange(amount)}
-          disabled={disabled || !affordable(amount)}
-          aria-pressed={bet === amount}
-          className={`rounded-full border px-3 py-1.5 text-xs tabular-nums transition disabled:opacity-40 ${
-            bet === amount ? "border-gold bg-gold/15 text-gold-bright" : "border-line text-muted hover:border-gold/40"
-          }`}
-        >
-          {formatTokenAmount(BigInt(amount))}
+    <div>
+      <p className="mb-2 flex items-center justify-between text-xs text-faint">
+        {label}
+        <span className="flex gap-1">
+          <Kbd>−</Kbd>
+          <Kbd>+</Kbd>
+        </span>
+      </p>
+      <div className="flex items-center gap-2 rounded-2xl border border-line bg-ink/60 p-1.5">
+        <button type="button" aria-label="Lower bet" className={button} onClick={() => onChange(lower)} disabled={disabled || bet <= bets.min}>
+          −
         </button>
-      ))}
+        <p className="min-w-0 flex-1 text-center" aria-live="polite">
+          <span className={`text-2xl font-semibold tabular-nums ${affordable(bet) ? "text-text" : "text-danger"}`}>{formatTokenAmount(BigInt(bet))}</span>
+          <span className="ml-1.5 text-xs text-muted">300</span>
+        </p>
+        <button
+          type="button"
+          aria-label="Raise bet"
+          className={button}
+          onClick={() => onChange(higher)}
+          disabled={disabled || bet >= bets.max || !affordable(higher)}
+        >
+          +
+        </button>
+      </div>
     </div>
   );
+}
+
+const KEY_NAMES: Record<string, string> = {
+  " ": "space",
+  Enter: "enter",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+  "+": "plus",
+  "=": "plus",
+  "-": "minus",
+  "_": "minus",
+};
+
+/**
+ * Keyboard control for a running game. Keys are named as in KEY_NAMES or by
+ * their lower-case character ("1", "c"). A button that has keyboard focus keeps
+ * Enter and Space for itself; typing in a field or an open dialog pauses the game keys.
+ */
+export function useGameKeys(bindings: Record<string, (() => void) | false | undefined>) {
+  const current = useRef(bindings);
+  useEffect(() => {
+    current.current = bindings;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("input, textarea, select, [contenteditable=true]") || document.querySelector("[role=dialog]")) return;
+      const key = KEY_NAMES[event.key] ?? event.key.toLowerCase();
+      if ((key === "enter" || key === "space") && target?.closest("button, a")) return;
+      const handler = current.current[key];
+      if (!handler) return;
+      event.preventDefault();
+      handler();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 }
