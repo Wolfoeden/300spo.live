@@ -11,6 +11,8 @@ import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RaceDeal } from "./card-race-stage";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
+import { STRATEGIES, strategyPick, type RaceStrategy } from "@/lib/game/race-strategy";
+import { StrategyPicker } from "./race-strategy";
 
 export const BOARDS = 4;
 export type RaceDeals = { nonce: number; serverSeedHash: string; deals: RaceDeal[] };
@@ -51,6 +53,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const [lastWin, setLastWin] = useState<number | null>(null);
   // Bumped by the replay button: all four finished races run again.
   const [replay, setReplay] = useState(0);
+  // A standing pick for all four races (blue, red, low/mid/high odds), chosen again on every deal.
+  const [strategy, setStrategy] = useState<RaceStrategy | null>(null);
   const timer = useRef<number | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   // The board the number keys pick for; it moves on after each pick.
@@ -94,9 +98,11 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const count = (choices: Picks) => choices.filter((choice) => choice !== null).length;
   const playable = (choices: Picks) =>
     count(choices) > 0 && bet * count(choices) <= available && choices.every((choice, board) => choice === null || oddsOf(board, choice) > 0);
-  const picked = count(picks);
+  const strategyPicks: Picks | null = strategy && deals ? deals.deals.map((deal) => strategyPick(strategy, deal.odds)) : null;
+  const selected: Picks = strategy ? (strategyPicks ?? empty()) : picks;
+  const picked = count(selected);
   const total = bet * picked;
-  const canStart = enabled && !busy && fresh && playable(picks);
+  const canStart = enabled && !busy && fresh && playable(selected);
   const showResult = phase === "animating" || phase === "done";
   const shownBalance = busy ? balance - total : available;
   const won = outcome?.results.filter((round): round is RaceRound => !!round && round.win) ?? [];
@@ -105,6 +111,7 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
 
   const pick = (board: number, suit: number) => {
     if (busy) return;
+    setStrategy(null);
     if (phase === "done") {
       // The finished races stay on screen until the player starts picking for the next ones.
       setPhase("idle");
@@ -112,10 +119,21 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
       setPicks(empty().map((_, index) => (index === board ? suit : null)));
       return;
     }
-    setPicks((current) => current.map((choice, index) => (index === board ? (choice === suit ? null : suit) : choice)));
+    // Tapping a lane while a strategy is on keeps its picks and changes this one by hand.
+    setPicks(selected.map((choice, index) => (index === board ? (choice === suit ? null : suit) : choice)));
   };
 
-  const start = async (choices: Picks = picks, fast = false) => {
+  const changeStrategy = (next: RaceStrategy | null) => {
+    setStrategy(next);
+    setPicks(empty());
+    setAutoNote(null);
+    if (!busy && phase === "done") {
+      setPhase("idle");
+      setOutcome(null);
+    }
+  };
+
+  const start = async (choices: Picks = selected, fast = false) => {
     if (!deals) return;
     setPicks(choices);
     setLastPicks(choices);
@@ -151,8 +169,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   }, []);
   const stopAuto = useCallback(() => setAuto("off"), []);
   useStopWhenHidden(auto, stopAuto);
-  const autoPicks = picked > 0 ? picks : lastPicks;
-  const canAuto = enabled && !!autoPicks && count(autoPicks) > 0;
+  const autoPicks = strategy ? strategyPicks : count(picks) > 0 ? picks : lastPicks;
+  const canAuto = enabled && (strategy !== null || (!!autoPicks && count(autoPicks) > 0));
   useAutoRun(auto, enabled && !busy && fresh, () => {
     if (!autoPicks || !playable(autoPicks)) {
       setAuto("off");
@@ -160,7 +178,9 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
         id: Date.now(),
         text:
           !autoPicks || count(autoPicks) === 0
-            ? "Auto stopped · pick a lane first"
+            ? strategy
+              ? "Auto stopped · no ace fits this pick"
+              : "Auto stopped · pick a lane first"
             : bet * count(autoPicks) > available
               ? "Auto stopped · not enough game balance"
               : "Auto stopped · a picked ace cannot win the new deal",
@@ -185,7 +205,12 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
     "4": () => pickByKey(3),
     left: () => setActive((board) => (board + BOARDS - 1) % BOARDS),
     right: () => setActive((board) => (board + 1) % BOARDS),
-    backspace: () => !busy && setPicks((current) => current.map((choice, index) => (index === active ? null : choice))),
+    backspace: () => {
+      if (busy) return;
+      setStrategy(null);
+      setPicks(selected.map((choice, index) => (index === active ? null : choice)));
+    },
+    ...Object.fromEntries(STRATEGIES.map((entry) => [entry.key, () => changeStrategy(strategy === entry.id ? null : entry.id)])),
     up: () => !busy && setBet(stepBet(bets, bet, 1)),
     down: () => !busy && setBet(stepBet(bets, bet, -1)),
     plus: () => !busy && setBet(stepBet(bets, bet, 1)),
@@ -229,6 +254,7 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const panel = (
     <GamePanel
       prompt={prompt}
+      options={<StrategyPicker value={strategy} onChange={changeStrategy} />}
       bet={{ bets, bet, onChange: setBet, disabled: busy, affordable: (amount) => amount * Math.max(1, picked) <= available }}
       play={{
         label: picked === 0 ? "Pick lanes" : `Start ${picked} race${picked === 1 ? "" : "s"} · ${formatTokenAmount(BigInt(total))}`,
@@ -263,7 +289,7 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
       <div className="grid h-full grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
         {Array.from({ length: BOARDS }, (_, board) => {
           const round = showResult ? (outcome?.results[board] ?? null) : null;
-          const choice = showResult && round ? round.choice : picks[board];
+          const choice = showResult ? (round?.choice ?? null) : selected[board];
           return (
             <div
               key={board}
