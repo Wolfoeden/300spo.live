@@ -1,5 +1,6 @@
 import { BlockArrivals } from "@/components/block-arrivals";
 import { LiveDataProvider } from "@/components/data/live-data";
+import { DripSection } from "@/components/drip/drip-section";
 import { Guide } from "@/components/guide";
 import { Hero } from "@/components/hero";
 import { Faq, FinalCta, Participate, Partners, SiteFooter } from "@/components/sections";
@@ -15,6 +16,7 @@ export default function HomePage() {
       <main>
         <Hero />
         <Guide />
+        <DripSection />
         <BlockArrivals />
         <Partners />
         <Participate />

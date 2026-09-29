@@ -1,7 +1,7 @@
 import type { Config, Context } from "@netlify/functions";
-import { addressBytesFromWallet, addressToBech32, drepCredential, isRewardAddress, sameBytes } from "../../lib/cardano/address";
+import { addressBytesFromWallet, addressToBech32, isRewardAddress } from "../../lib/cardano/address";
+import { isOurDrep, isOurPool } from "../../lib/delegation";
 import { koios } from "../../lib/server/koios";
-import { DREP_ID, POOL_ID } from "../../lib/site";
 
 // Each request makes exactly one Koios call to stay inside Netlify's 10 s limit.
 
@@ -10,15 +10,6 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
   });
-
-const isOurDrep = (value: unknown) => {
-  if (typeof value !== "string" || !value.startsWith("drep")) return false;
-  try {
-    return sameBytes(drepCredential(value).hash, drepCredential(DREP_ID).hash);
-  } catch {
-    return false;
-  }
-};
 
 /** GET /api/chain/account?stake=<stake address> — registration and delegation state. */
 const account = async (request: Request) => {
@@ -43,7 +34,7 @@ const account = async (request: Request) => {
       registered,
       delegatedPool: registered ? (info?.delegated_pool ?? null) : null,
       delegatedDrep: registered ? (info?.delegated_drep ?? null) : null,
-      delegatedTo300: { pool: registered && info?.delegated_pool === POOL_ID, drep: registered && isOurDrep(info?.delegated_drep) },
+      delegatedTo300: { pool: registered && isOurPool(info?.delegated_pool), drep: registered && isOurDrep(info?.delegated_drep) },
       // ADA controlled by the stake key (lovelace); the drip tiers compare it with their thresholds.
       totalLovelace: registered ? (info?.total_balance ?? "0") : "0",
     },

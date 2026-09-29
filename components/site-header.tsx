@@ -11,6 +11,8 @@ const NAV = [
   { href: "/#guide", label: "Cardano guide" },
   { href: "/#pool", label: "Live pool" },
   { href: "/#governance", label: "Governance" },
+  { href: LINKS.play, label: "Games" },
+  { href: "/#drip", label: "Drip" },
   { href: "/#partners", label: "Partners" },
   { href: LINKS.wallet, label: "300 Wallet" },
 ];
@@ -47,9 +49,13 @@ export function SiteHeader() {
     >
       <nav className="container-site flex h-[4.5rem] items-center gap-3 sm:gap-6" aria-label="Primary navigation">
         <Brand />
-        <div className="ml-6 hidden items-center gap-1 lg:flex">
+        <div className="ml-2 hidden items-center gap-0.5 lg:flex xl:ml-6 xl:gap-1">
           {NAV.map((item) => (
-            <a key={item.href} href={item.href} className="rounded-full px-3.5 py-2 text-sm text-muted transition hover:bg-white/5 hover:text-text">
+            <a
+              key={item.href}
+              href={item.href}
+              className="whitespace-nowrap rounded-full px-2.5 py-2 text-sm text-muted transition hover:bg-white/5 hover:text-text xl:px-3.5"
+            >
               {item.label}
             </a>
           ))}

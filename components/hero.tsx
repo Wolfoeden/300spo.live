@@ -60,9 +60,18 @@ export function Hero() {
               Explore 300 DRep
             </a>
           </motion.div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.3 }} className="mt-6">
+            <a href="#drip" className="group inline-flex flex-wrap items-center gap-2.5 text-sm text-muted transition hover:text-text">
+              <span className="rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 font-mono text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-gold">
+                Drip
+              </span>
+              Hold 300 and delegate — claim ADA, NIGHT and 300 rewards
+              <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
+            </a>
+          </motion.div>
           <motion.a
             href="#partners"
-            className="mt-8 inline-flex flex-wrap items-center gap-3 text-sm text-muted transition hover:text-text"
+            className="mt-5 inline-flex flex-wrap items-center gap-3 text-sm text-muted transition hover:text-text"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.35 }}
