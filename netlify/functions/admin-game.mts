@@ -68,9 +68,12 @@ const act = async (body: Record<string, unknown>) => {
     }
     case "welcome": {
       const amount = toBigInt(body.amount);
+      const poolAmount = toBigInt(body.poolAmount);
       const minAda = toBigInt(body.minAda);
-      if (!amount || amount <= 0n || minAda === null || minAda < 0n) return json({ error: "Starting credit and minimum ADA must be whole numbers." }, 400);
-      await gameDb.adminUpdateWelcome(body.enabled === true, amount, minAda * 1_000_000n);
+      if (!amount || amount <= 0n || !poolAmount || poolAmount <= 0n || minAda === null || minAda < 0n) {
+        return json({ error: "Starting credits and minimum ADA must be whole numbers." }, 400);
+      }
+      await gameDb.adminUpdateWelcome(body.enabled === true, amount, poolAmount, minAda * 1_000_000n);
       return json(await gameDb.adminOverview());
     }
     case "scan": {

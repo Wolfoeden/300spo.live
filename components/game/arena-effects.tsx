@@ -9,7 +9,19 @@ const BURST_MS = 3200;
 const COINS = 18;
 
 /** Full-stage celebration for a win: gold flash, shock ring, 300 coins flying out and the amount. */
-export function WinBurst({ amount, onDone, compact = false }: { amount: number; onDone(): void; compact?: boolean }) {
+export function WinBurst({
+  amount,
+  onDone,
+  compact = false,
+  title = "You won",
+  note = "300 tokens",
+}: {
+  amount: number;
+  onDone(): void;
+  compact?: boolean;
+  title?: string;
+  note?: string;
+}) {
   const reduce = useReducedMotion();
   const [seed] = useState(() => Math.floor(Math.random() * 1000));
 
@@ -69,7 +81,7 @@ export function WinBurst({ amount, onDone, compact = false }: { amount: number; 
         animate={{ scale: [0.3, 1.18, 1], opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <p className={`font-mono uppercase text-gold-bright ${compact ? "text-[0.55rem] tracking-[0.2em]" : "text-xs tracking-[0.35em]"}`}>You won</p>
+        <p className={`font-mono uppercase text-gold-bright ${compact ? "text-[0.55rem] tracking-[0.2em]" : "text-xs tracking-[0.35em]"}`}>{title}</p>
         <p
           className={`mt-1 font-bold tabular-nums tracking-tight drop-shadow-[0_4px_24px_rgba(233,180,76,0.6)] ${
             compact ? "text-xl sm:text-3xl" : "text-5xl sm:text-6xl"
@@ -77,7 +89,7 @@ export function WinBurst({ amount, onDone, compact = false }: { amount: number; 
         >
           <span className="text-gold-gradient">+{formatTokenAmount(BigInt(amount))}</span>
         </p>
-        {!compact && <p className="mt-1 text-sm font-semibold text-text">300 tokens</p>}
+        {!compact && <p className="mt-1 text-sm font-semibold text-text">{note}</p>}
       </motion.div>
     </motion.div>
   );

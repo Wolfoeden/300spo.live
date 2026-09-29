@@ -34,7 +34,7 @@ type GameState = {
   bets: { min: number; max: number; step: number };
   games: ArenaGame[];
   balance: number;
-  welcome?: { enabled: boolean; amount: number; claimed: boolean };
+  welcome?: { enabled: boolean; amount: number; poolAmount?: number; claimed: boolean };
   deposits: {
     reference: string;
     requested: number;
@@ -84,7 +84,7 @@ const loadChicken = () => api<ChickenState>("/api/game/chicken");
 const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
 const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
 const collectChicken = (round: number) => api<ChickenRound>("/api/game/chicken-collect", { round });
-type WelcomeResult = { status: "granted"; amount: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
+type WelcomeResult = { status: "granted"; amount: number; total: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
 const claimWelcome = () => api<WelcomeResult>("/api/game/welcome", {});
 
 class ApiError extends Error {}
@@ -143,7 +143,8 @@ export function GamePage() {
   const [watching, setWatching] = useState(false);
   const askedFor = useRef<string | null>(null);
   const welcomeOpen = state?.welcome?.enabled === true && !state.welcome.claimed;
-  const welcomeAmount = state?.welcome?.amount ?? 0;
+  // The offer names what delegating to the stake pool brings.
+  const welcomeAmount = state?.welcome?.poolAmount ?? state?.welcome?.amount ?? 0;
   const tryWelcome = useCallback(async () => {
     const result = await claimWelcome().catch(() => null);
     if (result?.status === "granted") {
@@ -292,7 +293,8 @@ export function GamePage() {
                   <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
                   {state?.welcome?.enabled && (
                     <span className="mt-2 block">
-                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.amount))} 300 starting credit once.
+                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.poolAmount ?? state.welcome.amount))} 300
+                      starting credit once.
                     </span>
                   )}
                 </InfoBubble>

@@ -37,7 +37,7 @@ export const dripDb = {
   claim: (stake: string) => one<{ claimed: number }>(db()`select drip.claim(${stake}) as result`),
   /** What the site shows without a wallet: the drip rules and the starting-credit offer. */
   offers: () =>
-    one<{ drip: Record<string, unknown>; welcome: { enabled: boolean; amount: number } }>(
+    one<{ drip: Record<string, unknown>; welcome: { enabled: boolean; amount: number; poolAmount: number } }>(
       db()`select jsonb_build_object('drip', drip.config() - 'excluded' - 'lastSnapshotEpoch', 'welcome', game.welcome_offer()) as result`,
     ),
   unpaidBatch: (limit: number) => one<PayoutRecipient[]>(db()`select drip.unpaid_batch(${limit}::integer) as result`),

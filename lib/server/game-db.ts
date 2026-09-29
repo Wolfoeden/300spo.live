@@ -109,7 +109,7 @@ export type Fairness = {
 
 /** `not_eligible` covers the unpublished ADA minimum; callers must not explain it. */
 export type WelcomeClaim =
-  | { status: "granted"; amount: number; balance: number }
+  | { status: "granted"; amount: number; total: number; balance: number }
   | { status: "claimed" | "not_eligible" | "disabled" };
 
 export const gameDb = {
@@ -153,8 +153,8 @@ export const gameDb = {
     one<ChickenRound>(db()`select game.chicken_start(${wallet}, ${bet.toString()}::bigint, ${hazards}::integer) as result`),
   chickenStep: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_step(${wallet}, ${round}::bigint) as result`),
   chickenCollect: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_collect(${wallet}, ${round}::bigint) as result`),
-  claimWelcome: (wallet: string, lovelace: bigint) =>
-    one<WelcomeClaim>(db()`select game.claim_welcome(${wallet}, ${lovelace.toString()}::bigint) as result`),
+  claimWelcome: (wallet: string, lovelace: bigint, pool: boolean) =>
+    one<WelcomeClaim>(db()`select game.claim_welcome(${wallet}, ${lovelace.toString()}::bigint, ${pool}::boolean) as result`),
   fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
   rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),
@@ -171,6 +171,6 @@ export const gameDb = {
   adminAdjust: (wallet: string, delta: bigint, note: string) =>
     db()`select game.admin_adjust(${wallet}, ${delta.toString()}::bigint, ${note}) as result`,
   adminAssignUnmatched: (txHash: string, wallet: string) => db()`select game.admin_assign_unmatched(${txHash}, ${wallet}) as result`,
-  adminUpdateWelcome: (enabled: boolean, amount: bigint, minLovelace: bigint) =>
-    db()`select game.admin_update_welcome(${enabled}, ${amount.toString()}::bigint, ${minLovelace.toString()}::bigint)`,
+  adminUpdateWelcome: (enabled: boolean, amount: bigint, poolAmount: bigint, minLovelace: bigint) =>
+    db()`select game.admin_update_welcome(${enabled}, ${amount.toString()}::bigint, ${poolAmount.toString()}::bigint, ${minLovelace.toString()}::bigint)`,
 };
