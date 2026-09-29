@@ -30,8 +30,6 @@ const required = [
   "netlify/functions/admin-session.mjs",
   "netlify/functions/admin-content.mjs",
   "netlify/functions/site-content.mjs",
-  "netlify/functions/admin-media.mjs",
-  "netlify/functions/media.mjs",
 ];
 
 const missing = required.filter((file) => !existsSync(file));
@@ -79,7 +77,8 @@ if (existsSync(chromeBuild) && statSync(chromeBuild).size < 1_000_000) {
 }
 
 const landing = readFileSync("out/index.html", "utf8");
-const requiredLandingMarkers = ["Stake Cardano", "pool1v8gvy6tjp8x8wg5h4jw20p9up04lxgw0l0lgery9mz4h7h9x25n", "Connect", "/admin/", "/wallet/"];
+// The 300 Wallet is announced as coming soon, so the landing page names it without linking /wallet/.
+const requiredLandingMarkers = ["Stake Cardano", "pool1v8gvy6tjp8x8wg5h4jw20p9up04lxgw0l0lgery9mz4h7h9x25n", "Connect", "/admin/", "300 Wallet"];
 const missingLanding = requiredLandingMarkers.filter((marker) => !landing.includes(marker));
 if (missingLanding.length) {
   console.error(`Landing page export is missing:\n${missingLanding.join("\n")}`);

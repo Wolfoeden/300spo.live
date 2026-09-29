@@ -56,7 +56,7 @@ export function Hero() {
             <DelegateButton target="pool" className="btn btn-gold">
               Delegate to 300 SPO <ArrowRight size={16} />
             </DelegateButton>
-            <a href="#governance" className="btn btn-ghost">
+            <a href={LINKS.governance} className="btn btn-ghost">
               Explore 300 DRep
             </a>
           </motion.div>
