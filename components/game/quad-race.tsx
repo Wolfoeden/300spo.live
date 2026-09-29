@@ -286,7 +286,7 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
 
   return (
     <GameFrame gameId="card-race" payoutBps={game.payoutBps} onBack={onBack} toolbar={toolbar} panel={panel} toast={toast}>
-      <div className="grid h-full grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+      <div className="grid h-full grid-cols-2 grid-rows-2 gap-1 p-1 sm:gap-3 sm:p-0">
         {Array.from({ length: BOARDS }, (_, board) => {
           const round = showResult ? (outcome?.results[board] ?? null) : null;
           const choice = showResult ? (round?.choice ?? null) : selected[board];

@@ -193,7 +193,7 @@ export function GamePanel({
   return (
     <div
       ref={root}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-ink px-3 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_40px_-20px_rgba(0,0,0,0.9)] lg:relative lg:inset-auto lg:z-auto lg:h-full lg:overflow-y-auto lg:border-r lg:border-t-0 lg:border-line lg:bg-ink/40 lg:p-5 lg:shadow-none"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-ink px-3 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_40px_-20px_rgba(0,0,0,0.9)] lg:relative lg:inset-auto lg:z-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:border-t-0 lg:bg-transparent lg:p-5 lg:shadow-none"
     >
       <div className="mx-auto flex max-w-md flex-col gap-1.5 lg:h-full lg:max-w-none lg:gap-4">
         {options}

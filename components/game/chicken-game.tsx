@@ -277,7 +277,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
 
   return (
     <GameFrame gameId="chicken" payoutBps={game.payoutBps} onBack={onBack} info={rules} panel={panel} toast={toast}>
-      <div className="h-full overflow-hidden rounded-2xl border border-line">
+      <div className="h-full overflow-hidden sm:rounded-2xl sm:border sm:border-line">
         <Road
           lanes={lanes}
           multipliers={multipliers}

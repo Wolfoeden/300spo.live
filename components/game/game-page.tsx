@@ -8,7 +8,7 @@ import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
-import { DripCard, RewardsPanel } from "../drip/drip-card";
+import { RewardsPanel } from "../drip/drip-card";
 import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
 import { useDelegation } from "../wallet/delegation";
@@ -275,38 +275,42 @@ export function GamePage() {
         <div className="absolute -top-40 right-[-10%] h-[30rem] w-[30rem] rounded-full bg-gold/[0.12] blur-[120px]" />
       </div>
 
-      <div className={`container-site relative pt-24 sm:pt-28 ${docked ? "pb-[calc(var(--dock,11rem)+1.5rem)] lg:pb-24" : "pb-24"}`}>
-        <header className="flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <p className="kicker">300 Games</p>
-            <h1 className="mt-3 text-4xl font-semibold leading-[1.02] tracking-[-0.03em] sm:text-5xl">
-              Play with <span className="text-gold-gradient">300.</span>{" "}
-              <InfoBubble label="How the 300 games work">
-                <span className="block">
-                  Deposit 300 tokens as game credit, pick a winner and bet{" "}
-                  {state ? `${formatTokenAmount(BigInt(state.bets.min))} to ${formatTokenAmount(BigInt(state.bets.max))}` : "300 to 3,000"}. A correct
-                  pick pays out in game credit.
-                </span>
-                <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
-                {state?.welcome?.enabled && (
-                  <span className="mt-2 block">
-                    Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.amount))} 300 starting credit once.
+      {/* In a game the page starts with the game itself, right under the site header. */}
+      <div className={`container-site relative ${docked ? "pb-[calc(var(--dock,11rem)+1.5rem)] pt-[4.75rem] lg:pb-24" : "pb-24 pt-24"}`}>
+        {docked ? (
+          <h1 className="sr-only">Play with 300</h1>
+        ) : (
+          <header className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+                Play with <span className="text-gold-gradient">300.</span>{" "}
+                <InfoBubble label="How the 300 games work">
+                  <span className="block">
+                    Deposit 300 tokens as game credit, pick a winner and bet{" "}
+                    {state ? `${formatTokenAmount(BigInt(state.bets.min))} to ${formatTokenAmount(BigInt(state.bets.max))}` : "300 to 3,000"}. A correct
+                    pick pays out in game credit.
                   </span>
-                )}
-              </InfoBubble>
-            </h1>
-          </div>
-          <AccountBar
-            gated={!!gate}
-            balance={state?.balance ?? null}
-            onConnect={() => openDialog(() => undefined)}
-            onVerify={signIn}
-            signing={auth.status === "signing"}
-            connected={status === "connected" && !!wallet}
-          />
-        </header>
+                  <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
+                  {state?.welcome?.enabled && (
+                    <span className="mt-2 block">
+                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.amount))} 300 starting credit once.
+                    </span>
+                  )}
+                </InfoBubble>
+              </h1>
+            </div>
+            <AccountBar
+              gated={!!gate}
+              balance={state?.balance ?? null}
+              onConnect={() => openDialog(() => undefined)}
+              onVerify={signIn}
+              signing={auth.status === "signing"}
+              connected={status === "connected" && !!wallet}
+            />
+          </header>
+        )}
 
-        {welcome && !gate && (
+        {welcome && !gate && !docked && (
           <WelcomeNotice
             status={welcome.status}
             amount={welcome.amount}
@@ -316,7 +320,7 @@ export function GamePage() {
           />
         )}
 
-        <div id="games" className="mt-10 scroll-mt-24">
+        <div id="games" className={docked ? "" : "mt-6 scroll-mt-24"}>
           {!tile ? (
             <Lobby onOpen={(target) => goTo(target)} />
           ) : gate ? (
@@ -366,6 +370,17 @@ export function GamePage() {
           )}
         </div>
 
+        {/* Below a running game, so the offer does not take room from it. */}
+        {welcome && !gate && docked && (
+          <WelcomeNotice
+            status={welcome.status}
+            amount={welcome.amount}
+            watching={watching}
+            onDelegate={() => setWatching(true)}
+            onDismiss={() => setWelcome(null)}
+          />
+        )}
+
         {state && !gate && (
           <section id="account" aria-labelledby="account-title" className="mt-14 scroll-mt-24">
             <h2 id="account-title" className="kicker">
@@ -380,10 +395,6 @@ export function GamePage() {
             </div>
           </section>
         )}
-
-        <div className="mt-5">
-          <DripCard />
-        </div>
       </div>
     </div>
   );
@@ -418,15 +429,14 @@ function AccountBar({
     );
   }
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-gold/25 bg-gradient-to-br from-gold/[0.1] to-transparent py-2 pl-4 pr-2">
-      <div>
-        <p className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-faint">Game balance</p>
-        <p className="text-xl font-semibold tabular-nums">
-          {formatTokenAmount(BigInt(balance))} <span className="text-gold-gradient text-sm font-bold">300</span>
+    <div className="flex items-center gap-3 rounded-2xl border border-line py-1.5 pl-3 pr-1.5">
+      <div className="leading-tight">
+        <p className="text-base font-semibold tabular-nums">
+          {formatTokenAmount(BigInt(balance))} <span className="text-gold-gradient text-xs font-bold">300</span>
         </p>
-        <p className="text-[0.62rem] text-faint">Game credit only · no withdrawals</p>
+        <p className="text-[0.6rem] text-faint">Game credit only · no withdrawals</p>
       </div>
-      <button type="button" onClick={() => openTerminalTab("deposit")} className="btn btn-ghost !px-4 !py-2 text-sm">
+      <button type="button" onClick={() => openTerminalTab("deposit")} className="btn btn-ghost !px-3 !py-1.5 text-xs">
         Deposit
       </button>
     </div>
@@ -451,7 +461,7 @@ function WelcomeNotice({
   const { start } = useDelegation();
   return (
     <div
-      className={`mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${
+      className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 text-sm ${
         status === "granted" ? "border-positive/40 bg-positive/10 text-positive" : "border-gold/30 bg-gold/[0.06] text-text"
       }`}
       role="status"
