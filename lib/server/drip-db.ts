@@ -34,6 +34,12 @@ export const dripDb = {
     ),
   recordRun: (run: Record<string, unknown>) => db()`select drip.record_run(${asJson(run)})`,
   statusFor: (stake: string) => one<Record<string, unknown>>(db()`select drip.status_for(${stake}) as result`),
+  claim: (stake: string) => one<{ claimed: number }>(db()`select drip.claim(${stake}) as result`),
+  /** What the site shows without a wallet: the drip rules and the starting-credit offer. */
+  offers: () =>
+    one<{ drip: Record<string, unknown>; welcome: { enabled: boolean; amount: number } }>(
+      db()`select jsonb_build_object('drip', drip.config() - 'excluded' - 'lastSnapshotEpoch', 'welcome', game.welcome_offer()) as result`,
+    ),
   unpaidBatch: (limit: number) => one<PayoutRecipient[]>(db()`select drip.unpaid_batch(${limit}::integer) as result`),
   reservePayout: (txHash: string, allocationIds: number[], recipients: number) =>
     db()`select drip.reserve_payout(${txHash}, ${allocationIds.map(String)}::bigint[], ${recipients}::integer)`,

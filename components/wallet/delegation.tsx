@@ -1,16 +1,19 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { addressBytesFromWallet, bytesToHex, drepCredential, poolKeyHash, stakeKeyHash } from "@/lib/cardano/address";
 import { assembleSignedTx, buildTransaction, delegationCertificates, ttlFromNow, parseUtxo, type ProtocolParams, type Utxo } from "@/lib/cardano/tx";
 import { fetchChain, loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
-import { formatAdaExact } from "@/lib/format";
+import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { DREP_ID, POOL_ID } from "@/lib/site";
 import { ArrowUpRight, Check, Spinner } from "../icons";
 import { Modal } from "../modal";
 import { useWallet } from "./wallet-provider";
 
-export type DelegationTarget = "pool" | "drep";
+/** "both" preselects the stake pool and the DRep; the wallet can untick either. */
+export type DelegationTarget = "pool" | "drep" | "both";
+type WelcomeOffer = { enabled: boolean; amount: number };
 
 type AccountState = { registered: boolean; delegatedTo300: { pool: boolean; drep: boolean } };
 
@@ -33,12 +36,26 @@ export const useDelegation = () => {
 export function DelegationProvider({ children }: { children: React.ReactNode }) {
   const { status, openDialog } = useWallet();
   const [open, setOpen] = useState(false);
-  const [selection, setSelection] = useState<Record<DelegationTarget, boolean>>({ pool: true, drep: false });
+  const [selection, setSelection] = useState<Selection>({ pool: true, drep: false });
+  const [offer, setOffer] = useState<WelcomeOffer | null>(null);
 
   const show = useCallback((target: DelegationTarget) => {
-    setSelection({ pool: target === "pool", drep: target === "drep" });
+    setSelection({ pool: target !== "drep", drep: target !== "pool" });
     setOpen(true);
   }, []);
+
+  // The starting-credit offer shown in the dialog; read once, the first time it opens.
+  useEffect(() => {
+    if (!open || offer) return;
+    let active = true;
+    fetch("/api/offers")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { welcome?: WelcomeOffer } | null) => active && data?.welcome && setOffer(data.welcome))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [open, offer]);
 
   // Without a wallet, connect first and continue straight into the delegation.
   const start = useCallback(
@@ -50,19 +67,24 @@ export function DelegationProvider({ children }: { children: React.ReactNode }) 
     <DelegationContext.Provider value={{ start }}>
       {children}
       <Modal open={open} onClose={() => setOpen(false)} title="Delegate to 300">
-        {open && <DelegationBody selection={selection} setSelection={setSelection} />}
+        {open && <DelegationBody selection={selection} setSelection={setSelection} offer={offer?.enabled ? offer : null} />}
       </Modal>
     </DelegationContext.Provider>
   );
 }
 
+type Selection = { pool: boolean; drep: boolean };
+
 function DelegationBody({
   selection,
   setSelection,
+  offer,
 }: {
-  selection: Record<DelegationTarget, boolean>;
-  setSelection: React.Dispatch<React.SetStateAction<Record<DelegationTarget, boolean>>>;
+  selection: Selection;
+  setSelection: React.Dispatch<React.SetStateAction<Selection>>;
+  offer: WelcomeOffer | null;
 }) {
+  const onPlay = usePathname()?.startsWith("/play") ?? false;
   const { wallet, getApi, refreshBalance } = useWallet();
   const [account, setAccount] = useState<AccountState | null>(null);
   const [chainParams, setChainParams] = useState<ProtocolParams | null>(null);
@@ -144,6 +166,21 @@ function DelegationBody({
         <p className="text-muted">
           It is recorded on-chain within a minute. Staking rewards follow the normal epoch cycle; your ADA stays in your wallet.
         </p>
+        {offer && (
+          <StartingCredit amount={offer.amount}>
+            {onPlay ? (
+              "It is added to your game balance here as soon as the delegation is on chain."
+            ) : (
+              <>
+                Collect it in{" "}
+                <a href="/play/" className="font-medium text-gold-bright underline underline-offset-2">
+                  300 Games
+                </a>{" "}
+                once the delegation is on chain.
+              </>
+            )}
+          </StartingCredit>
+        )}
         <a
           href={`https://cardanoscan.io/transaction/${phase.txHash}`}
           target="_blank"
@@ -163,6 +200,9 @@ function DelegationBody({
   return (
     <div className="space-y-4 text-sm">
       <p className="text-muted">Your ADA never leaves your wallet. You sign one transaction; the network fee is about 0.2 ADA.</p>
+      {offer && (
+        <StartingCredit amount={offer.amount}>Delegate to the 300 stake pool, the 300 DRep or both — once per wallet, to play 300 Games.</StartingCredit>
+      )}
       <div className="space-y-2">
         <Choice
           label="Stake pool"
@@ -224,6 +264,19 @@ function Choice(props: { label: string; value: string; done?: boolean; checked: 
       </span>
       {props.done && <span className="text-xs text-positive">Already delegated</span>}
     </label>
+  );
+}
+
+function StartingCredit({ amount, children }: { amount: number; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-gold/40 bg-gold/[0.08] p-4">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/300-logo.jpg" alt="" className="size-9 shrink-0 rounded-full ring-1 ring-gold-bright/50" />
+      <div>
+        <p className="font-semibold text-gold-bright">{formatTokenAmount(BigInt(amount))} 300 starting credit</p>
+        <p className="mt-0.5 text-muted">{children}</p>
+      </div>
+    </div>
   );
 }
 

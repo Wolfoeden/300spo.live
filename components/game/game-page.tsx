@@ -11,7 +11,7 @@ import { TOKEN_300 } from "@/lib/site";
 import { DripCard } from "../drip/drip-card";
 import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
-import { DelegateButton } from "../wallet/delegation";
+import { useDelegation } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import type { RacePreview } from "./card-race-stage";
@@ -424,6 +424,7 @@ function WelcomeNotice({
   onDismiss(): void;
 }) {
   const credit = `${formatTokenAmount(BigInt(amount))} 300`;
+  const { start } = useDelegation();
   return (
     <div
       className={`mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${
@@ -443,19 +444,26 @@ function WelcomeNotice({
       ) : (
         <>
           <span>
-            Delegate to the 300 stake pool and get <strong className="text-gold-bright">{credit}</strong> starting credit to play.
+            Delegate to the 300 stake pool or DRep and get <strong className="text-gold-bright">{credit}</strong> starting credit to play.
           </span>
-          {watching ? (
-            <span className="flex items-center gap-2 text-muted">
-              <Spinner size={14} /> Waiting for the delegation on chain…
-            </span>
-          ) : (
-            <span onClickCapture={onDelegate}>
-              <DelegateButton target="pool" className="btn btn-gold !px-4 !py-2 text-xs">
-                Delegate
-              </DelegateButton>
-            </span>
-          )}
+          <span className="flex items-center gap-3">
+            {watching && (
+              <span className="flex items-center gap-2 text-muted">
+                <Spinner size={14} /> Waiting for the delegation on chain…
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn btn-gold !px-4 !py-2 text-xs"
+              onClick={() => {
+                // The same dialog as on the landing page; after signing, this page keeps checking for the delegation.
+                start("both");
+                onDelegate();
+              }}
+            >
+              Delegate
+            </button>
+          </span>
         </>
       )}
     </div>

@@ -33,6 +33,7 @@ type Overview = {
     tiers: { holders: number; tier1: number; tier2: number } | null;
   }[];
   unpaid: { unit: string; amount: string; wallets: number }[];
+  unclaimed?: { unit: string; amount: string; wallets: number }[];
   payouts: { tx_hash: string; status: string; recipients: number; created_at: string; confirmed_at: string | null }[];
 };
 type RewardRow = { unit: string; label: string; decimals: string; amount: string; tier: Tier; distribution: Distribution };
@@ -403,9 +404,15 @@ function Status({ overview, describe, onRun }: { overview: Overview; describe(un
         </table>
       </div>
       <p className="mt-4 text-sm">
-        Unpaid:{" "}
+        Claimed, waiting for a payout:{" "}
         {overview.unpaid.length
           ? overview.unpaid.map((entry) => `${describe(entry.unit, entry.amount)} (${entry.wallets} wallets)`).join(" · ")
+          : "nothing"}
+      </p>
+      <p className="mt-1 text-sm text-muted">
+        Earned, not claimed yet:{" "}
+        {overview.unclaimed?.length
+          ? overview.unclaimed.map((entry) => `${describe(entry.unit, entry.amount)} (${entry.wallets} wallets)`).join(" · ")
           : "nothing"}
       </p>
     </Card>
@@ -489,7 +496,8 @@ function Payout({
   return (
     <Card title="Payout">
       <p className="text-sm text-muted">
-        Connect the wallet that holds the rewards (ADA and tokens). It signs one transaction for up to 40 wallets; nothing is signed on the server.
+        Pays the rewards wallets have claimed. Connect the wallet that holds them (ADA and tokens); it signs one transaction for up to 40 wallets,
+        nothing is signed on the server.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {status !== "connected" ? (
