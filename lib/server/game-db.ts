@@ -75,6 +75,15 @@ export type ChickenState = { open: ChickenRound | null; difficulties: { hazards:
 /** Result of a 4× round: one entry per deal, null where the player skipped it. */
 export type MultiRaceResult = { results: (PlayResult | null)[]; balance: number; serverSeedHash: string; clientSeed: string };
 
+/** One race with chips on one or more lanes: a round per staked lane. */
+export type StakedRace = {
+  outcome: number;
+  nonce: number;
+  rounds: { roundId: number; choice: number; bet: number; win: boolean; payout: number }[];
+  race: { track: number[]; draws: number[]; odds: number[] };
+};
+export type StakedRacesResult = { results: (StakedRace | null)[]; balance: number; serverSeedHash: string; clientSeed: string };
+
 export type PlayResult = {
   roundId: number;
   game: string;
@@ -130,6 +139,10 @@ export const gameDb = {
   playRaceMulti: (wallet: string, bet: bigint, choices: number[], nonce: number, serverSeedHash: string) =>
     one<MultiRaceResult>(
       db()`select game.play_race_multi(${wallet}, ${bet.toString()}::bigint, ${choices}::integer[], ${nonce}::integer, ${serverSeedHash}) as result`,
+    ),
+  playRaceStakes: (wallet: string, stakes: bigint[], nonce: number, serverSeedHash: string) =>
+    one<StakedRacesResult>(
+      db()`select game.play_race_stakes(${wallet}, ${stakes.map(String)}::bigint[], ${nonce}::integer, ${serverSeedHash}) as result`,
     ),
   playRace: (wallet: string, bet: bigint, choice: number, nonce: number, serverSeedHash: string) =>
     one<PlayResult>(

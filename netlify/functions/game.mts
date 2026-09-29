@@ -42,9 +42,11 @@ const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
   if (action === "chicken" && request.method === "GET") return json(await gameDb.chickenState(wallet));
   if (action === "race" && request.method === "GET") {
-    const count = Number(new URL(request.url).searchParams.get("count") ?? 1);
+    // With ?count the deals come as a list (the race table); without it, the single preview of older clients.
+    const param = new URL(request.url).searchParams.get("count");
+    const count = Number(param ?? 1);
     if (!Number.isInteger(count) || count < 1 || count > 4) return json({ error: "invalid_request" }, 400);
-    return json(count === 1 ? await gameDb.racePreview(wallet) : await gameDb.racePreviews(wallet, count));
+    return json(param === null ? await gameDb.racePreview(wallet) : await gameDb.racePreviews(wallet, count));
   }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!sameOrigin(request)) return json({ error: "forbidden_origin" }, 403);
@@ -108,6 +110,22 @@ const handle = async (request: Request, action: string, wallet: string) => {
       /^[0-9a-f]{64}$/.test(serverSeedHash);
     if (!valid) return json({ error: "invalid_request" }, 400);
     return json(await gameDb.playRaceMulti(wallet, bet, choices, nonce, serverSeedHash));
+  }
+
+  if (action === "play-stakes") {
+    // Chips on lanes: four amounts per race shown (♠ ♥ ♦ ♣), 0 = no chip; the database checks the bet rules.
+    const stakes = Array.isArray(body.stakes) ? body.stakes.map((stake: unknown) => String(stake)) : [];
+    const nonce = Number(body.nonce);
+    const serverSeedHash = String(body.serverSeedHash ?? "");
+    const valid =
+      stakes.length >= 4 &&
+      stakes.length <= 16 &&
+      stakes.length % 4 === 0 &&
+      stakes.every((stake: string) => /^\d{1,12}$/.test(stake)) &&
+      Number.isInteger(nonce) &&
+      /^[0-9a-f]{64}$/.test(serverSeedHash);
+    if (!valid) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.playRaceStakes(wallet, stakes.map(BigInt), nonce, serverSeedHash));
   }
 
   if (action === "chicken-start") {

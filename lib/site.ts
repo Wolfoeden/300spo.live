@@ -17,6 +17,8 @@ export const PARTNER_LINKS = {
 
 export const LINKS = {
   poolPm: `https://pool.pm/${POOL_ID_HEX}`,
+  /** The pool's live data (stake, delegators, blocks) on an explorer. */
+  poolLive: `https://cexplorer.io/pool/${POOL_ID}`,
   cardanoOrg: "https://cardano.org/",
   buyAda: "https://cardanomix.com",
   wallet: "/wallet/",
