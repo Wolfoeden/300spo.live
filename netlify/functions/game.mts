@@ -2,8 +2,7 @@ import type { Config, Context } from "@netlify/functions";
 import { DatabaseConfigError } from "../../lib/server/db";
 import { gameDb, gameErrorCode } from "../../lib/server/game-db";
 import { checkDepositTx } from "../../lib/server/game-scan";
-import { isOurDrep, isOurPool } from "../../lib/delegation";
-import { koios } from "../../lib/server/koios";
+import { claimWelcome } from "../../lib/server/welcome";
 import { json, readSession } from "./_shared/wallet-auth";
 
 // Player API for the game balance. Every call needs the wallet session from
@@ -23,28 +22,16 @@ const sameOrigin = (request: Request) => {
   return !origin || origin === new URL(request.url).origin;
 };
 
-/**
- * The one-time starting credit for wallets delegated to the 300 stake pool or
- * the 300 DRep. The chain says whether the wallet delegates and how much ADA it
- * holds; the database applies its minimum and books the credit once.
- */
-const claimWelcome = async (wallet: string) => {
-  if (!wallet.startsWith("stake1")) return { status: "not_delegated" };
-  type AccountInfo = { status?: string; delegated_pool?: string | null; delegated_drep?: string | null; total_balance?: string | null };
-  const [info] = await koios<AccountInfo[]>("account_info", { _stake_addresses: [wallet] });
-  const delegates = info?.status === "registered" && (isOurPool(info.delegated_pool) || isOurDrep(info.delegated_drep));
-  if (!delegates) return { status: "not_delegated" };
-  return gameDb.claimWelcome(wallet, BigInt(info.total_balance ?? "0"));
-};
-
 const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
   if (action === "chicken" && request.method === "GET") return json(await gameDb.chickenState(wallet));
   if (action === "race" && request.method === "GET") {
-    const count = Number(new URL(request.url).searchParams.get("count") ?? 1);
+    // With ?count the deals come as a list (the race table); without it, the single preview of older clients.
+    const param = new URL(request.url).searchParams.get("count");
+    const count = Number(param ?? 1);
     if (!Number.isInteger(count) || count < 1 || count > 4) return json({ error: "invalid_request" }, 400);
-    return json(count === 1 ? await gameDb.racePreview(wallet) : await gameDb.racePreviews(wallet, count));
+    return json(param === null ? await gameDb.racePreview(wallet) : await gameDb.racePreviews(wallet, count));
   }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!sameOrigin(request)) return json({ error: "forbidden_origin" }, 403);
@@ -108,6 +95,22 @@ const handle = async (request: Request, action: string, wallet: string) => {
       /^[0-9a-f]{64}$/.test(serverSeedHash);
     if (!valid) return json({ error: "invalid_request" }, 400);
     return json(await gameDb.playRaceMulti(wallet, bet, choices, nonce, serverSeedHash));
+  }
+
+  if (action === "play-stakes") {
+    // Chips on lanes: four amounts per race shown (♠ ♥ ♦ ♣), 0 = no chip; the database checks the bet rules.
+    const stakes = Array.isArray(body.stakes) ? body.stakes.map((stake: unknown) => String(stake)) : [];
+    const nonce = Number(body.nonce);
+    const serverSeedHash = String(body.serverSeedHash ?? "");
+    const valid =
+      stakes.length >= 4 &&
+      stakes.length <= 16 &&
+      stakes.length % 4 === 0 &&
+      stakes.every((stake: string) => /^\d{1,12}$/.test(stake)) &&
+      Number.isInteger(nonce) &&
+      /^[0-9a-f]{64}$/.test(serverSeedHash);
+    if (!valid) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.playRaceStakes(wallet, stakes.map(BigInt), nonce, serverSeedHash));
   }
 
   if (action === "chicken-start") {

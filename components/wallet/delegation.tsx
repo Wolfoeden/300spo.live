@@ -13,7 +13,8 @@ import { useWallet } from "./wallet-provider";
 
 /** "both" preselects the stake pool and the DRep; the wallet can untick either. */
 export type DelegationTarget = "pool" | "drep" | "both";
-type WelcomeOffer = { enabled: boolean; amount: number };
+/** Starting credit: `poolAmount` for delegating to the stake pool, `amount` for the DRep alone. */
+type WelcomeOffer = { enabled: boolean; amount: number; poolAmount?: number };
 
 type AccountState = { registered: boolean; delegatedTo300: { pool: boolean; drep: boolean } };
 
@@ -85,6 +86,7 @@ function DelegationBody({
   offer: WelcomeOffer | null;
 }) {
   const onPlay = usePathname()?.startsWith("/play") ?? false;
+  const credit = offer ? (selection.pool || !selection.drep ? (offer.poolAmount ?? offer.amount) : offer.amount) : 0;
   const { wallet, getApi, refreshBalance } = useWallet();
   const [account, setAccount] = useState<AccountState | null>(null);
   const [chainParams, setChainParams] = useState<ProtocolParams | null>(null);
@@ -167,7 +169,7 @@ function DelegationBody({
           It is recorded on-chain within a minute. Staking rewards follow the normal epoch cycle; your ADA stays in your wallet.
         </p>
         {offer && (
-          <StartingCredit amount={offer.amount}>
+          <StartingCredit amount={credit}>
             {onPlay ? (
               "It is added to your game balance here as soon as the delegation is on chain."
             ) : (
@@ -201,7 +203,11 @@ function DelegationBody({
     <div className="space-y-4 text-sm">
       <p className="text-muted">Your ADA never leaves your wallet. You sign one transaction; the network fee is about 0.2 ADA.</p>
       {offer && (
-        <StartingCredit amount={offer.amount}>Delegate to the 300 stake pool, the 300 DRep or both — once per wallet, to play 300 Games.</StartingCredit>
+        <StartingCredit amount={credit}>
+          {selection.pool || !selection.drep
+            ? "For delegating to the 300 stake pool — once per wallet, to play 300 Games."
+            : `For delegating to the 300 DRep — once per wallet, to play 300 Games. With the stake pool it is ${formatTokenAmount(BigInt(offer.poolAmount ?? offer.amount))}.`}
+        </StartingCredit>
       )}
       <div className="space-y-2">
         <Choice

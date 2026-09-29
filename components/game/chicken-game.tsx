@@ -9,6 +9,7 @@ import { DIFFICULTIES, hitChance } from "@/lib/game/chicken";
 import { Spinner } from "../icons";
 import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
+import { FinishProps, Skyline, StartProps, VEHICLE_SECONDS, Vehicle, laneVehicle } from "./chicken-scenery";
 import { CockFigure } from "./cock-figure";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
@@ -390,14 +391,41 @@ function Road({
 
   useTrailingCamera(scroller, centerOf(position), reduce);
 
+  // The panorama takes the top of the road; the cock and the plates stand in the middle of what is left.
+  const road = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  const [width, setWidth] = useState(0);
+  // The visible part of the road, for the win burst around the cock.
+  const [view, setView] = useState(0);
+  useEffect(() => {
+    const element = road.current;
+    const frame = scroller.current;
+    if (!element || !frame) return;
+    const observer = new ResizeObserver(() => {
+      setHeight(element.clientHeight);
+      setWidth(element.clientWidth);
+      setView(frame.clientWidth);
+    });
+    observer.observe(element);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+  const world = Math.max(sidewalk * 2 + lanes * lane, width);
+  const band = Math.round(Math.min(170, Math.max(72, height * 0.26)));
+  const middle = `calc(50% + ${band / 2}px)`;
+
   return (
     <div ref={scroller} className="relative h-full overflow-x-auto overscroll-x-contain [scrollbar-width:thin]">
       <div
+        ref={road}
         className="relative h-full min-h-56 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)]"
         style={{ width: sidewalk * 2 + lanes * lane, minWidth: "100%" }}
       >
         {/* start sidewalk: the cock waits here */}
         <div className="absolute inset-y-0 left-0 border-r-4 border-[#2c2d33] bg-[#232429]" style={{ width: sidewalk }}>
+          <div className="absolute inset-x-0 bottom-7 flex justify-center opacity-90">
+            <StartProps size={Math.round(lane * 0.55)} />
+          </div>
           <span className="absolute inset-x-0 bottom-3 text-center font-mono text-[0.6rem] uppercase tracking-[0.2em] text-faint">Start</span>
         </div>
 
@@ -414,15 +442,22 @@ function Road({
               {traffic && (
                 <div
                   aria-hidden="true"
-                  className={reduce ? "hidden" : "absolute left-1/2 top-0 -ml-[18px] animate-drive"}
-                  style={{ animationDuration: `${2.4 + cosmetic(number, 5) * 2.2}s`, animationDelay: `-${cosmetic(number, 7) * 3}s` }}
+                  className={reduce ? "hidden" : "absolute inset-x-0 top-0 h-full animate-drive"}
+                  style={{
+                    animationDuration: `${VEHICLE_SECONDS[laneVehicle(number)] * (0.8 + cosmetic(number, 5) * 0.5)}s`,
+                    animationDelay: `-${cosmetic(number, 7) * 3}s`,
+                  }}
                 >
-                  <Car color={SUIT_COLORS[suit]} />
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2">
+                    <Vehicle kind={laneVehicle(number)} color={SUIT_COLORS[suit]} />
+                  </div>
                 </div>
               )}
+              <LaneMarks lane={number} band={band} />
               {passed && (
                 <motion.div
-                  className="absolute inset-x-1 top-[18%]"
+                  className="absolute inset-x-1"
+                  style={{ top: band + 10 }}
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25 }}
@@ -432,11 +467,11 @@ function Road({
               )}
               {/* The cock stands on his own lane; its value is in the label under him. */}
               {(number !== position || crash) && (
-                <div className="absolute inset-x-0 top-1/2 grid -translate-y-1/2 place-items-center">
+                <div className="absolute inset-x-0 grid -translate-y-1/2 place-items-center" style={{ top: middle }}>
                   <Plate value={multipliers[index]} size={lane * 0.74} state={crash ? "crash" : passed ? "passed" : next ? "next" : "ahead"} />
                 </div>
               )}
-              {crash && <CrashCar token={lane * 1.08} />}
+              {crash && <CrashCar token={lane * 1.08} middle={middle} />}
             </div>
           );
         })}
@@ -444,11 +479,21 @@ function Road({
         {/* finish sidewalk */}
         <div className="absolute inset-y-0 right-0 border-l-4 border-[#2c2d33] bg-[#232429]" style={{ width: sidewalk }}>
           <div className="absolute inset-y-0 left-0 w-2 bg-[repeating-linear-gradient(180deg,#e9b44c_0_8px,#0b0b0c_8px_16px)] opacity-70" />
+          <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-90">
+            <FinishProps size={Math.round(lane * 0.55)} />
+          </div>
         </div>
 
+        {/* The panorama over the road: vehicles come out from under it. */}
+        {height > 0 && (
+          <div className="pointer-events-none absolute left-0 top-0 z-[5]">
+            <Skyline width={world} height={band} marks={Array.from({ length: lanes + 1 }, (_, index) => sidewalk + index * lane)} />
+          </div>
+        )}
+
         <motion.div
-          className="absolute top-1/2 z-10"
-          style={{ width: lane * 0.9, height: lane * 1.08, marginLeft: -(lane * 0.45), marginTop: -(lane * 0.54) }}
+          className="absolute z-10"
+          style={{ top: middle, width: lane * 0.9, height: lane * 1.08, marginLeft: -(lane * 0.45), marginTop: -(lane * 0.54) }}
           initial={false}
           animate={{
             left: centerOf(position),
@@ -470,10 +515,42 @@ function Road({
           )}
         </motion.div>
 
-        <AnimatePresence>{burst && <WinBurst key={burst.id} amount={burst.amount} onDone={onBurstDone} />}</AnimatePresence>
+        {/* The win bursts out of the cock: a screen-wide box centred on him, below the panorama. */}
+        <AnimatePresence>
+          {burst && (
+            <div
+              key={burst.id}
+              className="pointer-events-none absolute bottom-0 z-30"
+              style={{ top: band, left: centerOf(position) - view / 2, width: view }}
+            >
+              <WinBurst amount={burst.amount} onDone={onBurstDone} />
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
+}
+
+/** Road details on a lane, away from the middle where the cock walks: a manhole or a painted arrow. */
+function LaneMarks({ lane, band }: { lane: number; band: number }) {
+  const roll = cosmetic(lane, 21);
+  const low = cosmetic(lane, 22) > 0.5;
+  // Between the panorama and the middle, or between the middle and the bottom edge.
+  const top = low ? `calc(75% + ${band / 4}px)` : `calc(${band}px + (100% - ${band}px) * 0.22)`;
+  if (roll < 0.35) {
+    return (
+      <span aria-hidden="true" className="absolute left-1/2 size-7 -translate-x-1/2 rounded-full border-2 border-[#34363d] bg-[repeating-linear-gradient(90deg,#26282e_0_3px,#1d1f24_3px_6px)] opacity-80" style={{ top }} />
+    );
+  }
+  if (roll < 0.7) {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 20 40" className="absolute left-1/2 w-4 -translate-x-1/2 opacity-40" style={{ top }}>
+        <path d="M10 40 V14 M3 20 L10 8 L17 20" stroke="#e8e2d0" strokeWidth="3" fill="none" strokeLinejoin="round" transform="rotate(180 10 20)" />
+      </svg>
+    );
+  }
+  return null;
 }
 
 function Plate({ value, size, state }: { value: number | undefined; size: number; state: "ahead" | "next" | "passed" | "crash" }) {
@@ -509,23 +586,10 @@ function Barrier() {
   );
 }
 
-function Car({ color }: { color: string }) {
-  return (
-    <svg viewBox="0 0 36 64" width="36" height="64" aria-hidden="true">
-      <rect x="2" y="2" width="32" height="60" rx="9" fill="#0f1013" stroke={color} strokeWidth="2.5" />
-      <rect x="7" y="12" width="22" height="11" rx="3" fill="#8fb1ff" opacity="0.35" />
-      <rect x="7" y="40" width="22" height="8" rx="3" fill="#8fb1ff" opacity="0.25" />
-      <rect x="15" y="2" width="6" height="60" fill={color} opacity="0.85" />
-      <rect x="5" y="56" width="7" height="4" rx="1.5" fill="#ffe7a8" />
-      <rect x="24" y="56" width="7" height="4" rx="1.5" fill="#ffe7a8" />
-    </svg>
-  );
-}
-
 /** The car that ends the round: it drives down its lane and stops with its nose on the cock. */
-function CrashCar({ token }: { token: number }) {
-  // Top edge of the cock token, measured from the middle of the road.
-  const impact = `calc(50% - ${token / 2}px)`;
+function CrashCar({ token, middle }: { token: number; middle: string }) {
+  // Top edge of the cock, measured from the middle of the road below the panorama.
+  const impact = `calc(${middle} - ${token / 2}px)`;
   return (
     <>
       <motion.div
@@ -536,7 +600,7 @@ function CrashCar({ token }: { token: number }) {
         animate={{ y: 0 }}
         transition={{ duration: 0.35, ease: "easeIn" }}
       >
-        <Car color="#ff6b6b" />
+        <Vehicle kind="sedan" color="#ff6b6b" />
       </motion.div>
       <motion.span
         aria-hidden="true"

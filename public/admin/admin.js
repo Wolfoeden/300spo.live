@@ -53,6 +53,7 @@ const renderGame = (data) => {
   if (data.welcome) {
     document.querySelector("#welcomeEnabled").checked = data.welcome.enabled;
     document.querySelector("#welcomeAmount").value = data.welcome.amount;
+    document.querySelector("#welcomePoolAmount").value = data.welcome.poolAmount;
     document.querySelector("#welcomeMinAda").value = Number(data.welcome.minLovelace) / 1e6;
     document.querySelector("#welcomeStats").textContent = ` Granted so far: ${formatAmount(data.welcome.granted)} wallets, ${formatAmount(data.welcome.total)} 300.`;
   }
@@ -189,6 +190,7 @@ document.querySelector("#game-welcome").addEventListener("submit", (event) => {
       action: "welcome",
       enabled: document.querySelector("#welcomeEnabled").checked,
       amount: document.querySelector("#welcomeAmount").value.trim(),
+      poolAmount: document.querySelector("#welcomePoolAmount").value.trim(),
       minAda: document.querySelector("#welcomeMinAda").value.trim(),
     },
     "Starting credit saved.",

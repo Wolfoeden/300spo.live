@@ -14,12 +14,10 @@ import { InfoBubble } from "../info-bubble";
 import { useDelegation } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
-import type { RacePreview } from "./card-race-stage";
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
 import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-game";
-import { ModeSwitch } from "./game-frame";
 import { Lobby } from "./lobby";
-import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
+import { RaceTable, type RaceDeals, type StakedRaces } from "./race-table";
 import { WalletCard, openTerminalTab } from "./terminal";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
@@ -36,7 +34,7 @@ type GameState = {
   bets: { min: number; max: number; step: number };
   games: ArenaGame[];
   balance: number;
-  welcome?: { enabled: boolean; amount: number; claimed: boolean };
+  welcome?: { enabled: boolean; amount: number; poolAmount?: number; claimed: boolean };
   deposits: {
     reference: string;
     requested: number;
@@ -79,17 +77,14 @@ const API_ERRORS: Record<string, string> = {
 
 const loadFairness = () => api<Fairness>("/api/game/fairness");
 const rotateSeed = (clientSeed: string | null) => api<Fairness>("/api/game/seed", clientSeed ? { clientSeed } : {});
-const loadRace = () => api<RacePreview>("/api/game/race");
 const loadRaces = (count: number) => api<RaceDeals>(`/api/game/race?count=${count}`);
-const placeBet = (game: string, bet: number, choice: number, race?: RaceTicket) =>
-  api<PlayResult>("/api/game/play", { game, bet: String(bet), choice, ...race });
-const placeRaces = (bet: number, choices: number[], ticket: RaceTicket) =>
-  api<MultiRaceResult>("/api/game/play-races", { bet: String(bet), choices, ...ticket });
+const placeBet = (game: string, bet: number, choice: number) => api<PlayResult>("/api/game/play", { game, bet: String(bet), choice });
+const placeStakes = (stakes: number[], ticket: RaceTicket) => api<StakedRaces>("/api/game/play-stakes", { stakes: stakes.map(String), ...ticket });
 const loadChicken = () => api<ChickenState>("/api/game/chicken");
 const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
 const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
 const collectChicken = (round: number) => api<ChickenRound>("/api/game/chicken-collect", { round });
-type WelcomeResult = { status: "granted"; amount: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
+type WelcomeResult = { status: "granted"; amount: number; total: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
 const claimWelcome = () => api<WelcomeResult>("/api/game/welcome", {});
 
 class ApiError extends Error {}
@@ -148,7 +143,8 @@ export function GamePage() {
   const [watching, setWatching] = useState(false);
   const askedFor = useRef<string | null>(null);
   const welcomeOpen = state?.welcome?.enabled === true && !state.welcome.claimed;
-  const welcomeAmount = state?.welcome?.amount ?? 0;
+  // The offer names what delegating to the stake pool brings.
+  const welcomeAmount = state?.welcome?.poolAmount ?? state?.welcome?.amount ?? 0;
   const tryWelcome = useCallback(async () => {
     const result = await claimWelcome().catch(() => null);
     if (result?.status === "granted") {
@@ -269,14 +265,18 @@ export function GamePage() {
 
   return (
     <div className="relative">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[26rem] overflow-hidden">
+      {/* The landing page's backdrop, fixed behind the whole page and blurred so the games stay readable. */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/300-hero.jpg" alt="" className="size-full object-cover opacity-[0.12] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-        <div className="absolute -top-40 right-[-10%] h-[30rem] w-[30rem] rounded-full bg-gold/[0.12] blur-[120px]" />
+        <img src="/300-hero.jpg" alt="" className="size-full scale-110 object-cover opacity-40 blur-[6px]" />
+        <div className="grid-backdrop absolute inset-0" />
+        <div className="absolute -top-40 right-[-10%] h-[36rem] w-[36rem] rounded-full bg-gold/[0.14] blur-[120px]" />
+        <div className="absolute left-[-15%] top-1/3 h-[28rem] w-[28rem] rounded-full bg-gold-deep/[0.12] blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(5,5,6,0.35),rgba(5,5,6,0.8))]" />
       </div>
 
       {/* In a game the page starts with the game itself, right under the site header. */}
-      <div className={`container-site relative ${docked ? "pb-[calc(var(--dock,11rem)+1.5rem)] pt-[4.75rem] lg:pb-24" : "pb-24 pt-24"}`}>
+      <div className={`container-site relative ${docked ? "pb-[calc(var(--dock,11rem)+1.5rem)] pt-[3.75rem] lg:pb-24" : "pb-24 pt-24"}`}>
         {docked ? (
           <h1 className="sr-only">Play with 300</h1>
         ) : (
@@ -293,7 +293,8 @@ export function GamePage() {
                   <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
                   {state?.welcome?.enabled && (
                     <span className="mt-2 block">
-                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.amount))} 300 starting credit once.
+                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.poolAmount ?? state.welcome.amount))} 300
+                      starting credit once.
                     </span>
                   )}
                 </InfoBubble>
@@ -347,26 +348,18 @@ export function GamePage() {
               step={stepChicken}
               collect={collectChicken}
             />
-          ) : quad ? (
-            <QuadRace
-              key="quad"
+          ) : game.kind === "race" ? (
+            <RaceTable
+              key={quad ? "race-4" : "race-1"}
               game={game}
               {...common}
+              count={quad ? 4 : 1}
+              onCount={(count) => goTo(count === 4 ? "horse-race/4" : "horse-race")}
               loadRaces={loadRaces}
-              playRaces={placeRaces}
-              toolbar={<ModeSwitch quad onChange={(value) => goTo(value ? "horse-race/4" : "horse-race")} />}
+              playStakes={placeStakes}
             />
           ) : (
-            <Arena
-              key={game.id}
-              game={game}
-              {...common}
-              play={placeBet}
-              loadRace={loadRace}
-              toolbar={
-                game.kind === "race" ? <ModeSwitch quad={false} onChange={(value) => goTo(value ? "horse-race/4" : "horse-race")} /> : undefined
-              }
-            />
+            <Arena key={game.id} game={game} {...common} play={placeBet} />
           )}
         </div>
 

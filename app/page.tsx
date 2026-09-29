@@ -6,6 +6,7 @@ import { Faq, FinalCta, Partners, SiteFooter } from "@/components/sections";
 import { SiteHeader } from "@/components/site-header";
 import { DelegationProvider } from "@/components/wallet/delegation";
 import { WalletDialog } from "@/components/wallet/wallet-dialog";
+import { WelcomeCredit } from "@/components/welcome-credit";
 
 export default function HomePage() {
   return (
@@ -22,6 +23,7 @@ export default function HomePage() {
       </main>
       <SiteFooter />
       <WalletDialog />
+      <WelcomeCredit />
       </DelegationProvider>
     </LiveDataProvider>
   );

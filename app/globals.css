@@ -24,14 +24,32 @@
   --animate-spin-slow: spin 40s linear infinite;
   --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
   --animate-drive: drive 3s linear infinite;
+  --animate-river: river 5s linear infinite;
+  --animate-twinkle: twinkle 3.2s ease-in-out infinite;
 
-  /* Chicken: cars crossing a lane from top to bottom. */
+  /* Chicken: a vehicle crossing a lane from top to bottom. It sits at the bottom of a box as tall as the
+     lane, and the box travels from just above the lane to just below it, so every vehicle covers the same road. */
   @keyframes drive {
     0% {
-      transform: translateY(-130%);
+      transform: translateY(-100%);
     }
     100% {
-      transform: translateY(560%);
+      transform: translateY(calc(100% + 130px));
+    }
+  }
+  /* Chicken scenery: the river's ripples and the stars. */
+  @keyframes river {
+    to {
+      stroke-dashoffset: -40;
+    }
+  }
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 0.9;
     }
   }
   @keyframes float {

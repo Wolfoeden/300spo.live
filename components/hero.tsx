@@ -4,7 +4,7 @@ import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } fro
 import { LINKS, PARTNER_LINKS } from "@/lib/site";
 import { capitalize, formatAdaCompact, formatCompact, formatInteger } from "@/lib/format";
 import { useLiveData } from "./data/live-data";
-import { ArrowRight } from "./icons";
+import { ArrowRight, ArrowUpRight } from "./icons";
 import { CountUp } from "./motion";
 import { DelegateButton } from "./wallet/delegation";
 
@@ -129,11 +129,9 @@ function CoinStage({
     y.set((event.clientY - rect.top) / rect.height - 0.5);
   };
 
-  // The coin is the way into the games; on phones it leads the hero.
+  // The coin is the way into the games; on phones it leads the hero. The chips around it link to their data.
   return (
-    <motion.a
-      href={LINKS.play}
-      aria-label="Play 300 games"
+    <motion.div
       className="group relative order-first mx-auto block aspect-square w-full max-w-[22rem] [perspective:1000px] sm:max-w-[26rem] lg:order-none lg:max-w-[30rem]"
       onPointerMove={onMove}
       onPointerLeave={() => {
@@ -144,6 +142,7 @@ function CoinStage({
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 1, delay: 0.1, ease }}
     >
+      <a href={LINKS.play} aria-label="Play 300 games" className="absolute inset-0 z-[5] rounded-full" />
       <OrbitRings />
       <motion.div className="absolute inset-[18%] animate-float" style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}>
         <div className="absolute inset-[-12%] rounded-full bg-gold/30 blur-3xl transition group-hover:bg-gold/45" />
@@ -155,14 +154,14 @@ function CoinStage({
         />
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.28),transparent_45%)]" />
       </motion.div>
-      <span className="btn btn-gold absolute bottom-[9%] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap !px-4 !py-2 text-sm shadow-xl shadow-black/40">
+      <span className="btn btn-gold pointer-events-none absolute bottom-[9%] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap !px-4 !py-2 text-sm shadow-xl shadow-black/40">
         Play 300 games <ArrowRight size={14} />
       </span>
-      <FloatingChip className="left-0 top-[14%]" delay={0.5} label="Pool status" value={capitalize(status)} positive />
-      <FloatingChip className="right-0 top-[4%]" delay={0.6} label="DRep voting power" value={formatAdaCompact(votingPower)} />
-      <FloatingChip className="right-0 top-[58%]" delay={0.65} label="Live stake" value={formatAdaCompact(stake)} />
-      <FloatingChip className="bottom-[4%] left-0 hidden sm:block" delay={0.8} label="Delegators" value={formatInteger(delegators)} />
-    </motion.a>
+      <FloatingChip className="left-0 top-[14%]" delay={0.5} label="Pool status" value={capitalize(status)} positive href={LINKS.poolLive} />
+      <FloatingChip className="right-0 top-[4%]" delay={0.6} label="DRep voting power" value={formatAdaCompact(votingPower)} href={LINKS.governance} />
+      <FloatingChip className="right-0 top-[58%]" delay={0.65} label="Live stake" value={formatAdaCompact(stake)} href={LINKS.poolLive} />
+      <FloatingChip className="bottom-[4%] left-0 hidden sm:block" delay={0.8} label="Delegators" value={formatInteger(delegators)} href={LINKS.poolLive} />
+    </motion.div>
   );
 }
 
@@ -187,20 +186,41 @@ function OrbitRings() {
   );
 }
 
-function FloatingChip({ className, delay, label, value, positive }: { className: string; delay: number; label: string; value: string; positive?: boolean }) {
+function FloatingChip({
+  className,
+  delay,
+  label,
+  value,
+  positive,
+  href,
+}: {
+  className: string;
+  delay: number;
+  label: string;
+  value: string;
+  positive?: boolean;
+  href: string;
+}) {
+  const external = href.startsWith("http");
   return (
-    <motion.div
-      className={`glass absolute z-10 rounded-2xl !bg-ink/70 px-4 py-2.5 shadow-xl shadow-black/40 ${className}`}
+    <motion.a
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
+      className={`glass absolute z-10 rounded-2xl !bg-ink/70 px-4 py-2.5 shadow-xl shadow-black/40 transition hover:!border-gold/40 hover:!bg-ink/90 ${className}`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay, ease }}
     >
-      <p className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-faint">{label}</p>
+      <p className="flex items-center gap-1 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-faint">
+        {label}
+        <ArrowUpRight size={10} />
+      </p>
       <p className={`mt-0.5 flex items-center gap-1.5 text-sm font-semibold ${positive && value !== "–" ? "text-positive" : ""}`}>
         {positive && value !== "–" && <span className="size-1.5 rounded-full bg-positive" />}
         {value}
       </p>
-    </motion.div>
+    </motion.a>
   );
 }
 
@@ -219,17 +239,28 @@ function ProofBar() {
     { label: "Live stake", value: <CountUp value={stakeAda} format={(v) => `${formatCompact(v)} ADA`} />, note: "Delegated to 300" },
     { label: "Delegators", value: <CountUp value={pool?.liveDelegators ?? null} format={(v) => formatInteger(Math.round(v))} />, note: "Choosing 300" },
     { label: "Pool status", value: <span className="text-positive">{capitalize(pool?.status)}</span>, note: updated },
-  ];
+  ].map((item) => ({ ...item, href: LINKS.poolLive }));
 
   return (
     <div className="relative border-y border-line bg-night/60 backdrop-blur">
       <div className="container-site grid grid-cols-2 lg:grid-cols-4" aria-label="Live 300 stake pool data">
         {items.map((item, index) => (
-          <div key={item.label} className={`px-1 py-6 sm:px-6 ${index % 2 === 1 ? "border-l border-line" : ""} ${index >= 2 ? "border-t border-line lg:border-t-0" : ""} ${index === 2 ? "lg:border-l" : ""}`}>
-            <p className="font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint">{item.label}</p>
+          <a
+            key={item.label}
+            href={item.href}
+            target="_blank"
+            rel="noreferrer"
+            className={`group block px-1 py-6 transition hover:bg-white/[0.02] sm:px-6 ${index % 2 === 1 ? "border-l border-line" : ""} ${index >= 2 ? "border-t border-line lg:border-t-0" : ""} ${index === 2 ? "lg:border-l" : ""}`}
+          >
+            <p className="flex items-center gap-1 font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint">
+              {item.label}
+              <span className="opacity-0 transition group-hover:opacity-100">
+                <ArrowUpRight size={10} />
+              </span>
+            </p>
             <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl">{item.value}</p>
             <p className="mt-1 text-xs text-muted">{item.note}</p>
-          </div>
+          </a>
         ))}
       </div>
     </div>

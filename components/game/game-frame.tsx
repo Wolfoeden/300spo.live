@@ -1,25 +1,28 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { formatTokenAmount } from "@/lib/format";
-import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { GAME_COPY, formatMultiplier, type GameId } from "@/lib/game/catalog";
 import { InfoBubble } from "../info-bubble";
+import { HEADER_SLOT_ID } from "../site-header";
 
 export type GameToast = { id: string | number; text: string; tone: "win" | "info" | "warn" | "error" };
+
+const noSubscribe = () => () => undefined;
 
 /**
  * A running game fills the screen: on phones the room between the site header
  * and the docked panel, on desktops a fixed-height shell with the panel on the
- * left and the game on the right. It snaps into place when scrolled near
- * (see the scroll snap on /play); a deliberate swipe scrolls past it.
+ * left and the game on the right. Its name sits in the site header. It snaps
+ * into place when scrolled near (see the scroll snap on /play); a deliberate
+ * swipe scrolls past it.
  */
 export function GameFrame({
   gameId,
   payoutBps,
   onBack,
-  toolbar,
   info,
   panel,
   toast,
@@ -28,7 +31,6 @@ export function GameFrame({
   gameId: GameId;
   payoutBps: number;
   onBack(): void;
-  toolbar?: React.ReactNode;
   /** Rules for the info bubble when the default "pick and payout" text does not fit. */
   info?: React.ReactNode;
   panel: React.ReactNode;
@@ -37,10 +39,10 @@ export function GameFrame({
   children: React.ReactNode;
 }) {
   const copy = GAME_COPY[gameId];
-  const race = gameId === "card-race";
-  // Back, name, rules and the legal line: a slim strip over the game on phones, the head of the panel on desktops.
+  // The header is rendered by the layout, so it is only there after the page has mounted.
+  const slot = useSyncExternalStore(noSubscribe, () => document.getElementById(HEADER_SLOT_ID), () => null);
   const heading = (
-    <div className="flex min-w-0 items-center gap-1">
+    <div className="flex min-w-0 items-center gap-0.5">
       <button
         type="button"
         onClick={onBack}
@@ -51,55 +53,34 @@ export function GameFrame({
           <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      <div className="min-w-0 leading-tight">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+      <div className="min-w-0">
+        <h2 className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold">
           {copy.title}
           <InfoBubble label={`How ${copy.title} works`}>
             {info ?? (
               <>
                 <span className="block">{copy.tagline}</span>
-                <span className="mt-2 block">
-                  {race ? "A correct pick pays the odds shown under its ace." : `A correct pick pays ${formatMultiplier(payoutBps)} your bet.`}
-                </span>
-                {race && <span className="mt-2 block">In 4× mode four races run at once, each with its own track and odds and the same bet.</span>}
-                {race && (
-                  <span className="mt-2 block text-xs text-faint">
-                    Card art:{" "}
-                    <a href={DEGEN_COLLECTION_URL} target="_blank" rel="noreferrer" className="text-gold-bright underline-offset-2 hover:underline">
-                      300 DEGEN NFTs
-                    </a>
-                  </span>
-                )}
+                <span className="mt-2 block">A correct pick pays {formatMultiplier(payoutBps)} your bet.</span>
               </>
             )}
           </InfoBubble>
         </h2>
-        <p className="truncate text-[0.6rem] text-faint">Game credit only · no withdrawals</p>
       </div>
     </div>
   );
   return (
     <section
       data-game-shell
-      className="relative -mx-4 h-[calc(100svh-4.75rem-var(--dock,11rem))] min-h-[22rem] -scroll-mt-3 snap-start overflow-hidden bg-night sm:-mx-6 lg:mx-0 lg:grid lg:h-[clamp(34rem,calc(100svh-5.25rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)] lg:rounded-3xl lg:border lg:border-line"
+      className="relative -mx-4 h-[calc(100svh-3.75rem-var(--dock,11rem))] min-h-[22rem] -scroll-mt-7 snap-start overflow-hidden bg-night/70 sm:-mx-6 lg:mx-0 lg:grid lg:h-[clamp(34rem,calc(100svh-4.25rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)] lg:rounded-3xl lg:border lg:border-line"
       onPointerUp={(event) => {
         // A click with mouse or finger leaves focus on the button, which would swallow Enter and Space.
         if (event.target instanceof Element && event.target.closest("button")) window.setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
       }}
     >
-      <div className="lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-line lg:bg-ink/40">
-        <div className="hidden items-center gap-2 border-b border-line px-3 py-2.5 lg:flex">
-          {heading}
-          <div className="ml-auto">{toolbar}</div>
-        </div>
-        {panel}
-      </div>
+      {slot && createPortal(heading, slot)}
+      <div className="lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-line lg:bg-ink/60">{panel}</div>
       <div className="relative flex h-full min-h-0 min-w-0 flex-col">
         <div aria-hidden="true" className="grid-backdrop pointer-events-none absolute inset-0 opacity-50" />
-        <div className="relative flex items-center gap-2 px-1.5 pt-1 lg:hidden">
-          {heading}
-          <div className="ml-auto">{toolbar}</div>
-        </div>
         <div className="relative min-h-0 flex-1 sm:p-2 lg:p-3">
           {children}
           <Toast toast={toast ?? null} />

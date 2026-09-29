@@ -8,6 +8,9 @@ import { SoonBadge } from "./coming-soon";
 import { Close, Menu } from "./icons";
 import { ConnectButton } from "./wallet/connect-button";
 
+/** Where a running game shows its name in the header (see GameFrame). */
+export const HEADER_SLOT_ID = "site-header-game";
+
 const NAV = [
   { href: "/#guide", label: "Start" },
   { href: LINKS.governance, label: "Governance" },
@@ -28,7 +31,8 @@ export function Brand() {
     <Link href="/#top" className="flex items-center gap-2.5" aria-label="300 home">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/300-logo.jpg" alt="" className="size-9 rounded-full ring-1 ring-gold/40" />
-      <span className="leading-none">
+      {/* In a game the name of the game takes this room on phones. */}
+      <span className="leading-none max-sm:[html:has([data-game-shell])_&]:hidden">
         <strong className="block text-base font-bold tracking-tight">300</strong>
         <small className="hidden whitespace-nowrap font-mono text-[0.62rem] uppercase tracking-[0.16em] text-muted min-[400px]:block">SPO &amp; DRep</small>
       </span>
@@ -53,8 +57,14 @@ export function SiteHeader() {
         scrolled || open ? "border-b border-line bg-ink/75 backdrop-blur-xl" : "border-b border-transparent"
       }`}
     >
-      <nav className="container-site flex h-[4.5rem] items-center gap-3 sm:gap-6" aria-label="Primary navigation">
+      {/* Slimmer while a game runs, so the game gets the room. */}
+      <nav
+        className="container-site flex h-[4.5rem] items-center gap-3 transition-[height] sm:gap-6 [html:has([data-game-shell])_&]:h-14"
+        aria-label="Primary navigation"
+      >
         <Brand />
+        {/* A running game puts its name here (GameFrame). */}
+        <div id={HEADER_SLOT_ID} className="flex min-w-0 flex-1 justify-center empty:hidden" />
         <div className="ml-2 hidden items-center gap-0.5 lg:flex xl:ml-6 xl:gap-1">
           {NAV.map((item) => (
             <a
