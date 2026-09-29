@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { LINKS } from "@/lib/site";
 import { useLiveData } from "./data/live-data";
-import { ArrowRight, ArrowUpRight, Plus } from "./icons";
+import { ArrowRight, Plus } from "./icons";
+import { WalletSoonButton } from "./coming-soon";
 import { Reveal } from "./motion";
 import { Brand } from "./site-header";
 import { DelegateButton } from "./wallet/delegation";
@@ -49,76 +50,6 @@ function PartnerCard({ src, name, tag, withPlus }: { src: string; name: string; 
       </div>
       {withPlus && <span className="text-2xl text-gold">+</span>}
     </>
-  );
-}
-
-export function Participate() {
-  const { content } = useLiveData();
-  const cards = [
-    {
-      step: "01 · Start",
-      title: "Buy ADA",
-      text: "Get ADA and take your first step into the Cardano ecosystem.",
-      href: LINKS.buyAda,
-      cta: "Buy ADA",
-      image: content.buyImage,
-    },
-    {
-      step: "02 · Stake",
-      title: "Delegate to the SPO",
-      text: "Support independent block production while your ADA remains in your wallet.",
-      delegate: "pool" as const,
-      cta: "Delegate to SPO",
-      image: content.spoImage,
-      primary: true,
-    },
-    {
-      step: "03 · Govern",
-      title: "Delegate to the DRep",
-      text: "Give your governance voice to a long-term, Cardano-first set of principles.",
-      delegate: "drep" as const,
-      cta: "Delegate to DRep",
-      image: content.drepImage,
-    },
-  ];
-
-  return (
-    <section id="actions" aria-labelledby="action-title" className="pb-24 sm:pb-32">
-      <div className="container-site">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="kicker">Take part</p>
-          <h2 id="action-title" className="mt-4 text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
-            Choose how you participate in Cardano.
-          </h2>
-          <p className="mt-4 text-muted">Three direct paths. You remain in control at every step.</p>
-        </Reveal>
-        <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
-          {cards.map((card, index) => (
-            <Reveal key={card.title} delay={index * 0.08} as="article" className="group relative flex flex-col overflow-hidden rounded-3xl border border-line bg-panel transition hover:-translate-y-1 hover:border-gold/30">
-              <div className="relative aspect-[16/10] overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={card.image} alt="" className="size-full object-cover transition duration-700 group-hover:scale-105" />
-                <div className="absolute inset-0 bg-gradient-to-t from-panel via-panel/20 to-transparent" />
-              </div>
-              <div className="flex flex-1 flex-col p-6">
-                <span className="font-mono text-xs text-gold">{card.step}</span>
-                <h3 className="mt-2 text-xl font-semibold">{card.title}</h3>
-                <p className="mt-2 flex-1 text-sm text-muted">{card.text}</p>
-                {card.delegate ? (
-                  <DelegateButton target={card.delegate} className={`btn mt-6 ${card.primary ? "btn-gold" : "btn-ghost"}`}>
-                    {card.cta} <ArrowRight size={15} />
-                  </DelegateButton>
-                ) : (
-                  <a className="btn btn-ghost mt-6" href={card.href} target="_blank" rel="noreferrer">
-                    {card.cta} <ArrowUpRight size={15} />
-                  </a>
-                )}
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -211,9 +142,7 @@ export function FinalCta() {
               <DelegateButton target="drep" className="btn btn-ghost">
                 Delegate to DRep
               </DelegateButton>
-              <a className="btn btn-ghost" href={LINKS.wallet}>
-                Open 300 Wallet
-              </a>
+              <WalletSoonButton />
             </div>
           </div>
         </Reveal>

@@ -2,6 +2,7 @@
 
 import { DREP_ID, LINKS, POOL_ID } from "@/lib/site";
 import { capitalize, formatAdaCompact, formatInteger, formatMargin, formatPercent } from "@/lib/format";
+import { WalletSoonButton } from "./coming-soon";
 import { CopyButton } from "./copy-button";
 import { useLiveData } from "./data/live-data";
 import { ArrowRight, ArrowUpRight, Check } from "./icons";
@@ -137,9 +138,7 @@ export function Guide() {
                 <DelegateButton target="pool" className="btn btn-gold">
                   Delegate to 300 SPO <ArrowRight size={16} />
                 </DelegateButton>
-                <a className="btn btn-ghost" href={LINKS.wallet}>
-                  Open 300 Wallet
-                </a>
+                <WalletSoonButton />
               </div>
             </GuideSection>
 
@@ -197,9 +196,14 @@ export function Guide() {
                     </div>
                   ))}
                 </div>
-                <DelegateButton target="drep" className="btn btn-gold">
-                  Delegate to 300 DRep <ArrowRight size={16} />
-                </DelegateButton>
+                <div className="flex flex-wrap gap-3">
+                  <DelegateButton target="drep" className="btn btn-gold">
+                    Delegate to 300 DRep <ArrowRight size={16} />
+                  </DelegateButton>
+                  <a className="btn btn-ghost" href={LINKS.governance}>
+                    Votes and rationales
+                  </a>
+                </div>
               </GuideSection>
             </div>
           </article>

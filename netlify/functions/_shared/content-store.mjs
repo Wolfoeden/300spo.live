@@ -3,9 +3,6 @@ export const defaults = {
   partnerKicker: "Our partners",
   partnerHeading: "300 SPO, powered by Midnight and RealFi.",
   partnerBody: "Building a stronger, more useful stake pool together across the Cardano ecosystem.",
-  buyImage: "/300-hero.jpg",
-  spoImage: "/300-logo.jpg",
-  drepImage: "/300-logo.jpg",
 };
 
 const connection = () => {

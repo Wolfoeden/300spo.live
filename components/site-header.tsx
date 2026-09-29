@@ -4,18 +4,24 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LINKS } from "@/lib/site";
+import { SoonBadge } from "./coming-soon";
 import { Close, Menu } from "./icons";
 import { ConnectButton } from "./wallet/connect-button";
 
 const NAV = [
-  { href: "/#guide", label: "Cardano guide" },
-  { href: "/#pool", label: "Live pool" },
-  { href: "/#governance", label: "Governance" },
-  { href: LINKS.play, label: "Games" },
-  { href: "/#drip", label: "Drip" },
-  { href: "/#partners", label: "Partners" },
-  { href: LINKS.wallet, label: "300 Wallet" },
+  { href: "/#guide", label: "Start" },
+  { href: LINKS.governance, label: "Governance" },
 ];
+
+/** The 300 Wallet is not released yet: shown in the nav, but not a link. */
+function WalletSoon({ className }: { className: string }) {
+  return (
+    <span aria-disabled="true" title="The 300 Wallet is coming soon" className={`cursor-not-allowed text-faint ${className}`}>
+      300 Wallet
+      <SoonBadge />
+    </span>
+  );
+}
 
 export function Brand() {
   return (
@@ -59,6 +65,7 @@ export function SiteHeader() {
               {item.label}
             </a>
           ))}
+          <WalletSoon className="inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2 text-sm xl:px-3.5" />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <ConnectButton />
@@ -86,6 +93,7 @@ export function SiteHeader() {
                   {item.label}
                 </a>
               ))}
+              <WalletSoon className="flex items-center gap-2 px-3 py-3" />
             </div>
           </motion.div>
         )}

@@ -6,9 +6,6 @@ const loginPanel = document.querySelector("#login-panel"),
     "partnerKicker",
     "partnerHeading",
     "partnerBody",
-    "buyImage",
-    "spoImage",
-    "drepImage",
   ];
 const request = async (url, options) => {
   const response = await fetch(url, options),
@@ -219,8 +216,6 @@ const showEditor = async () => {
     const content = await request("/api/admin/content");
     for (const key of fields)
       document.querySelector(`#${key}`).value = content[key] || "";
-    for (const key of ["buyImage", "spoImage", "drepImage"])
-      document.querySelector(`#${key}Preview`).src = content[key] || "";
     editorPanel.hidden = false;
   } catch (error) {
     message.textContent = `Homepage content unavailable: ${error.message}`;
@@ -265,38 +260,6 @@ document
       message.textContent = error.message;
     }
   });
-
-const readFile = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("Could not read the image."));
-    reader.readAsDataURL(file);
-  });
-
-document.querySelectorAll("[data-image-field]").forEach((input) => {
-  input.addEventListener("change", async () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    const field = input.dataset.imageField;
-    message.textContent = "Uploading image...";
-    input.disabled = true;
-    try {
-      const upload = await request("/api/admin/media", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dataUrl: await readFile(file), slot: input.dataset.imageSlot }),
-      });
-      document.querySelector(`#${field}`).value = upload.url;
-      document.querySelector(`#${field}Preview`).src = upload.url;
-      message.textContent = "Image uploaded. Click Save changes to publish it.";
-    } catch (error) {
-      message.textContent = error.message;
-    } finally {
-      input.disabled = false;
-    }
-  });
-});
 
 document.querySelector("#logout").addEventListener("click", async () => {
   await request("/api/admin/session", { method: "DELETE" });

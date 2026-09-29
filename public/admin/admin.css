@@ -118,20 +118,6 @@ button {
 [hidden] {
   display: none !important;
 }
-.image-editor {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 4px 0 0;
-  padding: 16px;
-  border: 1px solid #3a3935;
-  border-radius: 10px;
-}
-.image-editor legend { padding: 0 8px; color: #f4d675; font-weight: 800; }
-.image-field { overflow: hidden; border: 1px solid #3a3935; border-radius: 8px; background: #090909; }
-.image-field img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #111; }
-.image-field span, .image-field input[type="file"] { padding: 0 10px; }
-.image-field input[type="file"] { padding-bottom: 12px; color: #aaa; font-size: 12px; }
 .button-link {
   display: inline-block;
   margin-top: 12px;
@@ -179,5 +165,4 @@ label.checkbox input { width: auto; }
   .secondary {
     width: 100%;
   }
-  .image-editor { grid-template-columns: 1fr; }
 }
