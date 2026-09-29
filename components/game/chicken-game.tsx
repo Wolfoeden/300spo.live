@@ -7,10 +7,10 @@ import { SUIT_COLORS } from "@/lib/game/card-race";
 import { cosmetic, formatMultiplier } from "@/lib/game/catalog";
 import { DIFFICULTIES, hitChance } from "@/lib/game/chicken";
 import { Spinner } from "../icons";
-import type { ArenaGame, WalletPanels } from "./arena";
+import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
-import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
-import { HoldPlayButton, Terminal, useAutoRun, useStopWhenHidden, type AutoMode } from "./terminal";
+import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
+import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
 
 export type ChickenRound = {
   id: number;
@@ -59,6 +59,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
   const [burst, setBurst] = useState<{ id: number; amount: number } | null>(null);
   // Holding GO keeps the cock walking; it stops with the round (never starts the next bet by itself).
   const [auto, setAuto] = useState<AutoMode>("off");
+  const [lastWin, setLastWin] = useState<number | null>(null);
   const [liveBalance, setLiveBalance] = useState<number | null>(null);
   const [seenBalance, setSeenBalance] = useState(balance);
   if (balance !== seenBalance) {
@@ -103,7 +104,10 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
   const settle = useCallback(
     (result: ChickenRound) => {
       if (result.balance !== undefined) setLiveBalance(result.balance);
-      if (result.status === "collected" && result.payout > 0) setBurst({ id: result.id, amount: result.payout });
+      if (result.status === "collected" && result.payout > 0) {
+        setBurst({ id: result.id, amount: result.payout });
+        setLastWin(result.payout);
+      }
       if (result.status !== "open") onSettled();
     },
     [onSettled],
@@ -182,101 +186,106 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
     </>
   );
 
-  return (
-    <GameFrame gameId="chicken" payoutBps={game.payoutBps} balance={shownBalance} onBack={onBack} info={rules}>
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-4 lg:p-4">
-        <div className="min-w-0 lg:self-start lg:overflow-hidden lg:rounded-2xl lg:border lg:border-line">
-          <Road
-            lanes={lanes}
-            multipliers={multipliers}
-            position={position}
-            round={shown}
-            reduce={!!reduce}
-            burst={burst && shown?.id === burst.id ? burst : null}
-            onBurstDone={() => setBurst(null)}
-          />
-        </div>
-        <Terminal
-          balance={shownBalance}
-          deposit={wallet.deposit}
-          rewards={wallet.rewards}
-          play={
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="mb-2 flex items-center justify-between gap-2 text-xs text-faint">
-                  <span className="flex items-center gap-1.5">
-                    Difficulty
-                    <Kbd>1</Kbd>–<Kbd>4</Kbd>
-                  </span>
-                  <span>
-                    Car next lane <span className="font-semibold text-text">{(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%</span>
-                  </span>
-                </p>
-                <div className="grid grid-cols-4 gap-1 rounded-2xl border border-line bg-ink/60 p-1">
-                  {DIFFICULTIES.map((entry) => (
-                    <button
-                      key={entry.hazards}
-                      type="button"
-                      onClick={() => chooseDifficulty(entry.hazards)}
-                      disabled={open || busy}
-                      aria-pressed={hazards === entry.hazards}
-                      className={`rounded-xl px-1 py-2 text-xs font-semibold transition disabled:cursor-not-allowed ${
-                        hazards === entry.hazards ? "bg-gold/20 text-gold-bright" : "text-muted enabled:hover:text-text"
-                      }`}
-                    >
-                      {entry.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-end gap-2 lg:grid-cols-1 lg:gap-3">
-                <BetStepper compact bets={bets} bet={bet} onChange={setBet} disabled={betLocked} affordable={(amount) => amount <= shownBalance || open} />
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={take}
-                    disabled={!open || position < 1 || busy}
-                    className="flex min-h-14 flex-col items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#f4d675,#c98a2b)] px-2 font-bold leading-tight text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-40"
-                  >
-                    <span className="flex items-center gap-1.5 text-sm uppercase tracking-wide">
-                      Collect <Kbd>C</Kbd>
-                    </span>
-                    <span className="text-xs tabular-nums">{collectable > 0 ? `${formatTokenAmount(BigInt(collectable))} · ${formatMultiplier(current)}` : "—"}</span>
-                  </button>
-                  <HoldPlayButton tone="green" lockable={false} onPlay={() => void go()} auto={auto} onAuto={setAuto} playable={canGo}>
-                    {busy && auto === "off" ? (
-                      <Spinner size={18} />
-                    ) : (
-                      <span className="flex items-center gap-2 text-xl font-black uppercase tracking-wide">
-                        Go <Kbd>Space</Kbd>
-                      </span>
-                    )}
-                  </HoldPlayButton>
-                </div>
-              </div>
-              <p className="text-center text-[0.7rem] text-faint pointer-fine:hidden">Hold GO to keep walking</p>
-              {!open && bet > shownBalance && <p className="text-sm text-warning">Not enough game balance for this bet.</p>}
-              <AnimatePresence mode="wait">
-                {shown && shown.status !== "open" && (
-                  <motion.p
-                    key={shown.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={`rounded-xl border px-3 py-2 text-sm ${
-                      shown.status === "collected" ? "border-positive/40 bg-positive/10 text-positive" : "border-danger/30 bg-danger/10 text-danger"
-                    }`}
-                  >
-                    {shown.status === "collected"
-                      ? `+${formatTokenAmount(BigInt(shown.payout))} after ${shown.step} lane${shown.step === 1 ? "" : "s"} (${formatMultiplier(multipliers[shown.step - 1])})`
-                      : `Hit on lane ${shown.step} · ${formatTokenAmount(BigInt(shown.bet))} lost`}
-                  </motion.p>
-                )}
-              </AnimatePresence>
-              {error && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
-              {!enabled && <p className="text-sm text-warning">Games are paused right now.</p>}
-            </div>
+  const prompt =
+    auto !== "off"
+      ? "Walking while you hold GO"
+      : busy
+        ? "Crossing…"
+        : open
+          ? `Collect ${formatTokenAmount(BigInt(collectable))} or risk the next lane`
+          : bet > shownBalance
+            ? "Not enough balance for this bet"
+            : `Tap GO · car next lane ${(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%`;
+
+  const toast: GameToast | null = error
+    ? { id: `error-${error}`, text: error, tone: "error" }
+    : shown && shown.status !== "open"
+      ? shown.status === "collected"
+        ? {
+            id: shown.id,
+            text: `+${formatTokenAmount(BigInt(shown.payout))} after ${shown.step} lane${shown.step === 1 ? "" : "s"} · ${formatMultiplier(multipliers[shown.step - 1])}`,
+            tone: "win",
           }
+        : { id: shown.id, text: `Hit on lane ${shown.step} · ${formatTokenAmount(BigInt(shown.bet))} lost`, tone: "info" }
+      : !enabled
+        ? { id: "paused", text: "Games are paused right now.", tone: "warn" }
+        : null;
+
+  const panel = (
+    <GamePanel
+      prompt={prompt}
+      options={
+        <div>
+          <p className="mb-1.5 hidden items-center justify-between gap-2 text-[0.7rem] text-faint lg:flex">
+            <span className="flex items-center gap-1.5">
+              Difficulty
+              <Kbd>1</Kbd>–<Kbd>4</Kbd>
+            </span>
+            <span>
+              Car next lane <span className="font-semibold text-text">{(nextChance * 100).toFixed(nextChance < 0.1 ? 1 : 0)}%</span>
+            </span>
+          </p>
+          <div className="grid grid-cols-4 gap-1 rounded-xl border border-line bg-ink/60 p-0.5">
+            {DIFFICULTIES.map((entry) => (
+              <button
+                key={entry.hazards}
+                type="button"
+                onClick={() => chooseDifficulty(entry.hazards)}
+                disabled={open || busy}
+                aria-pressed={hazards === entry.hazards}
+                className={`rounded-lg px-1 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed lg:py-2 ${
+                  hazards === entry.hazards ? "bg-gold/20 text-gold-bright" : "text-muted enabled:hover:text-text"
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      }
+      bet={{ bets, bet, onChange: setBet, disabled: betLocked, affordable: (amount) => amount <= shownBalance || open }}
+      play={{
+        label: open ? `Next ${formatMultiplier(multipliers[position] ?? 0)}` : "Go",
+        onPlay: () => void go(),
+        playable: canGo,
+        auto,
+        onAuto: setAuto,
+        lockable: false,
+        tone: "green",
+        kbd: canGo ? <Kbd>Space</Kbd> : null,
+      }}
+      side={
+        open && (
+          <button
+            type="button"
+            onClick={take}
+            disabled={position < 1 || busy}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(180deg,var(--color-gold-bright),var(--color-gold))] px-2 font-bold leading-tight lg:min-h-14 lg:flex-col lg:gap-0 lg:rounded-2xl text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-40"
+          >
+            <span className="flex items-center gap-1.5 text-[0.68rem] uppercase tracking-[0.12em] opacity-80">
+              Collect <Kbd>C</Kbd>
+            </span>
+            <span className="text-base tabular-nums lg:text-xl">{formatTokenAmount(BigInt(collectable))}</span>
+          </button>
+        )
+      }
+      lastWin={lastWin}
+      balance={shownBalance}
+      wallet={wallet}
+    />
+  );
+
+  return (
+    <GameFrame gameId="chicken" payoutBps={game.payoutBps} onBack={onBack} info={rules} panel={panel} toast={toast}>
+      <div className="h-full overflow-hidden rounded-2xl border border-line">
+        <Road
+          lanes={lanes}
+          multipliers={multipliers}
+          position={position}
+          round={shown}
+          reduce={!!reduce}
+          burst={burst && shown?.id === burst.id ? burst : null}
+          onBurstDone={() => setBurst(null)}
         />
       </div>
     </GameFrame>
@@ -320,9 +329,9 @@ function Road({
   }, [position, lane]);
 
   return (
-    <div ref={scroller} className="relative overflow-x-auto overscroll-x-contain [scrollbar-width:thin]">
+    <div ref={scroller} className="relative h-full overflow-x-auto overscroll-x-contain [scrollbar-width:thin]">
       <div
-        className="relative h-72 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)] sm:h-96"
+        className="relative h-full min-h-56 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)]"
         style={{ width: sidewalk * 2 + lanes * lane, minWidth: "100%" }}
       >
         {/* start sidewalk with the 300 coin */}

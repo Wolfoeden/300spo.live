@@ -30,9 +30,12 @@ const DRAW_MS = 300;
 const SETBACK_MS = 700;
 const START_MS = 450;
 const END_MS = 700;
-/** Row heights: both boards scale with their width, within these bounds. */
-const FULL_ROW = { min: 40, max: 62, per: 8.4 };
-const COMPACT_ROW = { min: 18, max: 42, per: 8.5 };
+/**
+ * Row heights: a board fits both its width (per = rows across) and its height
+ * (rows = row heights stacked, fixed = pixels of text around them), within min and max.
+ */
+const FULL_ROW = { min: 18, max: 62, per: 8.4, rows: 10.9, fixed: 76 };
+const COMPACT_ROW = { min: 12, max: 42, per: 8.5, rows: 9.2, fixed: 18 };
 
 /** When each race event plays (ms after the race starts) and how long the whole race takes. */
 export const raceTimeline = (events: RaceEvent[]) => {
@@ -69,19 +72,25 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
     setCursor(0);
   }
 
-  // The board sizes its rows from its own width, so cards and aces grow with the screen.
-  const board = useRef<HTMLDivElement>(null);
+  // The board sizes its rows from the room it gets, so it always fits and grows with the screen.
+  const shell = useRef<HTMLDivElement>(null);
   const bounds = compact ? COMPACT_ROW : FULL_ROW;
   const [row, setRow] = useState(compact ? 24 : 44);
   useEffect(() => {
-    if (!board.current) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setRow(Math.min(bounds.max, Math.max(bounds.min, Math.round(entry.contentRect.width / bounds.per)))),
-    );
-    observer.observe(board.current);
+    // Measure the room around the board: the board itself is narrowed to its rows below.
+    const room = shell.current?.parentElement;
+    if (!room) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      const fit = Math.min(width / bounds.per, height > 0 ? (height - bounds.fixed) / bounds.rows : Infinity);
+      setRow(Math.min(bounds.max, Math.max(bounds.min, Math.floor(fit))));
+    });
+    observer.observe(room);
     return () => observer.disconnect();
   }, [bounds]);
   const tiny = row < 26;
+  // Below this the card art is unreadable: track cards become suit tiles.
+  const small = compact || row < 30;
   const deck = { width: Math.round(row * 1.36), height: Math.round(row * 1.9) };
   const trailCard = { width: Math.round(row * 1.0), height: Math.round(row * 1.4) };
 
@@ -113,7 +122,12 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
   const finished = !!result && shown === events.length;
 
   return (
-    <div className={`flex h-full flex-col ${compact ? "gap-1.5" : "gap-3"}`}>
+    <div
+      ref={shell}
+      className={`mx-auto flex h-full min-h-0 w-full flex-col ${compact ? "gap-1.5" : "gap-3"}`}
+      // Lanes stay in proportion to the aces when the height, not the width, sets the row size.
+      style={{ maxWidth: Math.round(row * (compact ? 9.4 : 10.2)) }}
+    >
       {!compact && (
         <>
           <div className="flex items-center gap-3">
@@ -173,7 +187,6 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
       )}
 
       <div
-        ref={board}
         className="grid"
         style={{ gridTemplateColumns: `${Math.round(row * (compact ? 1.3 : 1.42))}px repeat(4, minmax(0, 1fr))`, columnGap: compact ? 3 : Math.round(row / 5) }}
       >
@@ -193,7 +206,7 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                   transition={{ duration: 0.4 }}
                   className={`rounded-md ${level <= reached ? "ring-2 ring-gold/70" : ""}`}
                 >
-                  {compact ? (
+                  {small ? (
                     <MiniCard card={track[level - 1]} row={row} dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
                   ) : (
                     <FaceCard

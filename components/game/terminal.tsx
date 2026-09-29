@@ -4,13 +4,16 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { formatTokenAmount } from "@/lib/format";
 import { SoonBadge } from "../coming-soon";
-import { Kbd } from "./game-frame";
+import { Close } from "../icons";
+import { RollingBalance } from "./arena-effects";
+import { BetStepper, Kbd, stepBet, type Bets } from "./game-frame";
 
 /** Auto play: off, running while the play button is held, or locked on until stopped. */
 export type AutoMode = "off" | "hold" | "lock";
-type Tab = "play" | "deposit" | "withdraw" | "rewards";
+export type WalletPanels = { deposit: React.ReactNode; rewards: React.ReactNode };
+type WalletTab = "deposit" | "withdraw" | "rewards";
 
-/** Other parts of the page open a terminal tab with this event (detail: the tab). */
+/** Other parts of the page open a wallet tab with this event (detail: the tab). */
 export const OPEN_TAB_EVENT = "terminal:open";
 export const openTerminalTab = (tab: "deposit" | "rewards") => window.dispatchEvent(new CustomEvent(OPEN_TAB_EVENT, { detail: tab }));
 
@@ -40,104 +43,272 @@ export function useStopWhenHidden(mode: AutoMode, stop: () => void) {
   }, [mode, stop]);
 }
 
-const TABS: { id: Tab; label: string; path: string }[] = [
-  { id: "play", label: "Play", path: "M8 5v14l11-7z" },
+const WALLET_TABS: { id: WalletTab; label: string; path: string }[] = [
   { id: "deposit", label: "Deposit", path: "M12 4v12m0 0l-5-5m5 5l5-5M5 20h14" },
   { id: "withdraw", label: "Withdraw", path: "M12 20V8m0 0l-5 5m5-5l5 5M5 4h14" },
   { id: "rewards", label: "Rewards", path: "M12 3c3 4 6 6.5 6 10a6 6 0 01-12 0c0-3.5 3-6 6-10z" },
 ];
 
-/**
- * The game terminal: play controls and the wallet (deposit, withdraw, rewards)
- * behind one set of tabs. Docked to the bottom of the screen on phones, a
- * column beside the game on desktops; `docked={false}` is a plain card.
- */
-export function Terminal({
-  play,
-  deposit,
-  rewards,
-  balance,
-  docked = true,
-}: {
-  play?: React.ReactNode;
-  deposit: React.ReactNode;
-  rewards: React.ReactNode;
-  balance?: number;
-  docked?: boolean;
-}) {
-  const [tab, setTab] = useState<Tab>(play ? "play" : "deposit");
-  const root = useRef<HTMLDivElement>(null);
+/** Deposit, withdraw (not open yet) and rewards behind one set of tabs. */
+function WalletTabs({ wallet, tab, onTab }: { wallet: WalletPanels; tab: WalletTab; onTab(tab: WalletTab): void }) {
+  return (
+    <>
+      <div role="tablist" aria-label="Wallet" className="grid grid-cols-3 gap-1 rounded-2xl border border-line bg-ink/60 p-1">
+        {WALLET_TABS.map((entry) => {
+          const soon = entry.id === "withdraw";
+          const selected = tab === entry.id;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-disabled={soon}
+              title={soon ? "Withdrawals are coming soon" : undefined}
+              onClick={() => !soon && onTab(entry.id)}
+              className={`flex items-center justify-center gap-1.5 rounded-xl px-1 py-2 text-xs font-semibold transition ${
+                soon ? "cursor-not-allowed text-faint/70" : selected ? "bg-gold/15 text-gold-bright" : "text-muted hover:bg-white/5 hover:text-text"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d={entry.path} />
+              </svg>
+              {entry.label}
+              {soon && <SoonBadge />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="pt-4">{tab === "deposit" ? wallet.deposit : wallet.rewards}</div>
+    </>
+  );
+}
+
+/** The wallet in the lobby: the same tabs as a card. */
+export function WalletCard({ wallet }: { wallet: WalletPanels }) {
+  const [tab, setTab] = useState<WalletTab>("deposit");
+  const root = useRef<HTMLElement>(null);
   useEffect(() => {
     const onOpen = (event: Event) => {
-      const next = (event as CustomEvent<Tab>).detail;
+      const next = (event as CustomEvent<WalletTab>).detail;
       if (next !== "deposit" && next !== "rewards") return;
       setTab(next);
-      // On phones the docked terminal is always on screen; elsewhere bring it into view.
-      if (!docked || window.matchMedia("(min-width: 1024px)").matches) root.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      root.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     };
     window.addEventListener(OPEN_TAB_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
-  }, [docked]);
-  const tabs = TABS.filter((entry) => entry.id !== "play" || play);
-  const panel = tab === "play" ? play : tab === "deposit" ? deposit : rewards;
-
-  const bar = (
-    <div role="tablist" aria-label="Terminal" className={`grid gap-1 ${tabs.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>
-      {tabs.map((entry) => {
-        const soon = entry.id === "withdraw";
-        const selected = tab === entry.id;
-        return (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-disabled={soon}
-            title={soon ? "Withdrawals are coming soon" : undefined}
-            onClick={() => !soon && setTab(entry.id)}
-            className={`relative flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[0.68rem] font-semibold transition sm:flex-row sm:gap-1.5 sm:text-xs ${
-              soon ? "cursor-not-allowed text-faint/70" : selected ? "bg-gold/15 text-gold-bright" : "text-muted hover:bg-white/5 hover:text-text"
-            }`}
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill={entry.id === "play" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={entry.path} />
-            </svg>
-            {entry.label}
-            {soon && (
-              <span className="absolute -right-0.5 -top-1.5 origin-top-right scale-90 sm:static sm:scale-100">
-                <SoonBadge />
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
+  }, []);
+  return (
+    <section ref={root} id="terminal" className="glass scroll-mt-24 rounded-3xl p-4 sm:p-5">
+      <WalletTabs wallet={wallet} tab={tab} onTab={setTab} />
+    </section>
   );
+}
 
-  if (!docked) {
-    return (
-      <section ref={root} id="terminal" className="glass scroll-mt-24 rounded-3xl p-3 sm:p-4">
-        <div className="rounded-2xl border border-line bg-ink/60 p-1">{bar}</div>
-        <div className="p-2 pt-4 sm:p-3 sm:pt-5">{panel}</div>
-      </section>
-    );
-  }
+export type PanelPlay = {
+  /** Small line inside the play button, above the bet. */
+  label: React.ReactNode;
+  onPlay(): void;
+  playable: boolean;
+  auto: AutoMode;
+  onAuto(mode: AutoMode): void;
+  /** Hold-and-swipe lock and the Auto switch; off for games that must not run on their own. */
+  lockable?: boolean;
+  tone?: "gold" | "green";
+  kbd?: React.ReactNode;
+};
+
+/**
+ * The controls of a running game. On phones a slim dock at the bottom of the
+ * screen: the prompt, the bet inside the play button with − and + beside it,
+ * then balance, last win and the wallet. On desktops the left column of the game.
+ */
+export function GamePanel({
+  prompt,
+  options,
+  bet,
+  play,
+  side,
+  extra,
+  lastWin,
+  balance,
+  wallet,
+}: {
+  prompt: React.ReactNode;
+  /** Game choices above the prompt (coin side, difficulty). */
+  options?: React.ReactNode;
+  bet: { bets: Bets; bet: number; onChange(bet: number): void; disabled: boolean; affordable(amount: number): boolean };
+  play: PanelPlay;
+  /** Replaces − and + (Chicken's collect button while a round runs). */
+  side?: React.ReactNode;
+  /** A small action under the play button (skip to the finish). */
+  extra?: React.ReactNode;
+  lastWin: number | null;
+  balance: number;
+  wallet: WalletPanels;
+}) {
+  const [sheet, setSheet] = useState<WalletTab | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const next = (event as CustomEvent<WalletTab>).detail;
+      if (next === "deposit" || next === "rewards") setSheet(next);
+    };
+    window.addEventListener(OPEN_TAB_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
+  }, []);
+
+  // The game above sizes itself to the room the dock leaves on phones.
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const update = () => document.documentElement.style.setProperty("--dock", desktop.matches ? "0px" : `${element.offsetHeight}px`);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    desktop.addEventListener("change", update);
+    update();
+    return () => {
+      observer.disconnect();
+      desktop.removeEventListener("change", update);
+      document.documentElement.style.removeProperty("--dock");
+    };
+  }, []);
+
+  const step = (direction: 1 | -1) => bet.onChange(stepBet(bet.bets, bet.bet, direction));
+  const stepButton = (direction: 1 | -1) => (
+    <button
+      type="button"
+      aria-label={direction === 1 ? "Raise bet" : "Lower bet"}
+      onClick={() => step(direction)}
+      disabled={bet.disabled || (direction === 1 ? bet.bet >= bet.bets.max || !bet.affordable(stepBet(bet.bets, bet.bet, 1)) : bet.bet <= bet.bets.min)}
+      className="grid place-items-center rounded-xl border border-line bg-white/[0.03] text-xl leading-none text-text transition enabled:active:scale-95 disabled:opacity-30 lg:hidden"
+    >
+      {direction === 1 ? "+" : "−"}
+    </button>
+  );
+  const lockable = play.lockable ?? true;
 
   return (
     <div
       ref={root}
-      id="terminal"
-      className="fixed inset-x-0 bottom-0 z-40 flex flex-col-reverse border-t border-line-strong bg-ink/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_40px_-20px_rgba(0,0,0,0.9)] backdrop-blur-xl lg:sticky lg:top-24 lg:z-auto lg:flex-col lg:self-start lg:rounded-2xl lg:border lg:border-line lg:bg-ink/70 lg:pb-0 lg:shadow-none lg:backdrop-blur-none"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-ink px-3 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_40px_-20px_rgba(0,0,0,0.9)] lg:relative lg:inset-auto lg:z-auto lg:h-full lg:overflow-y-auto lg:border-r lg:border-t-0 lg:border-line lg:bg-ink/40 lg:p-5 lg:shadow-none"
     >
-      <div className="border-t border-line p-1.5 lg:border-b lg:border-t-0">{bar}</div>
-      <div className={`overflow-y-auto overscroll-contain p-3 lg:max-h-none lg:p-4 ${tab === "play" ? "" : "max-h-[65vh]"}`}>
-        {balance !== undefined && tab === "play" && (
-          <p className="mb-2 flex items-center justify-between font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint lg:hidden">
-            Balance <span className="text-sm normal-case tracking-normal text-text tabular-nums">{formatTokenAmount(BigInt(balance))} 300</span>
-          </p>
+      <div className="mx-auto flex max-w-md flex-col gap-1.5 lg:h-full lg:max-w-none lg:gap-4">
+        {options}
+        <div className="hidden lg:block">
+          <BetStepper bets={bet.bets} bet={bet.bet} onChange={bet.onChange} disabled={bet.disabled} affordable={bet.affordable} />
+        </div>
+        <p className="min-h-4 text-center text-[0.7rem] text-muted lg:text-left lg:text-xs" aria-live="polite">
+          {prompt}
+        </p>
+        <div className={`grid gap-2 ${side ? "grid-cols-2" : "grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] lg:grid-cols-1"}`}>
+          {side ?? stepButton(-1)}
+          <HoldPlayButton onPlay={play.onPlay} auto={play.auto} onAuto={play.onAuto} playable={play.playable} lockable={lockable} tone={play.tone}>
+            <span className="flex min-w-0 items-baseline gap-2 leading-tight lg:flex-col lg:items-center lg:gap-0">
+              <span className="truncate text-[0.62rem] font-semibold uppercase tracking-[0.1em] opacity-75 lg:text-[0.68rem]">{play.label}</span>
+              <span className="text-base font-bold tabular-nums lg:text-xl">
+                {formatTokenAmount(BigInt(bet.bet))} <span className="text-[0.65rem] font-semibold opacity-70">300</span>
+              </span>
+            </span>
+            {play.kbd}
+          </HoldPlayButton>
+          {!side && stepButton(1)}
+        </div>
+        {lockable && (
+          <div className="hidden lg:block">
+            <AutoToggle auto={play.auto} onAuto={play.onAuto} disabled={!play.playable} />
+          </div>
         )}
-        {panel}
+        {extra}
+        <div className="hidden lg:block lg:flex-1" />
+        <div className="flex items-center gap-3 whitespace-nowrap text-[0.7rem] lg:flex-col lg:text-xs lg:items-stretch lg:gap-3 lg:border-t lg:border-line lg:pt-4">
+          <p className="flex items-baseline gap-1.5 lg:justify-between">
+            <span className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-faint">Balance</span>
+            <span className="font-semibold text-text lg:text-lg">
+              <RollingBalance value={balance} />
+            </span>
+          </p>
+          <p className="flex items-baseline gap-1.5 lg:justify-between">
+            <span className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-faint">Last win</span>
+            <span className={`font-semibold tabular-nums ${lastWin ? "text-positive" : "text-faint"}`}>
+              {lastWin ? `+${formatTokenAmount(BigInt(lastWin))}` : "—"}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setSheet("deposit")}
+            aria-label="Wallet"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 font-semibold text-muted transition hover:border-gold/40 hover:text-text lg:hidden"
+          >
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="6" width="18" height="13" rx="2" />
+              <path d="M16 12h2M3 10h18" />
+            </svg>
+            <span className="hidden min-[380px]:inline">Wallet</span>
+          </button>
+          <div className="hidden grid-cols-3 gap-1.5 lg:grid">
+            {WALLET_TABS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => entry.id !== "withdraw" && setSheet(entry.id)}
+                aria-disabled={entry.id === "withdraw"}
+                title={entry.id === "withdraw" ? "Withdrawals are coming soon" : undefined}
+                className={`relative rounded-xl border border-line px-1 py-2 text-xs font-semibold transition ${
+                  entry.id === "withdraw" ? "cursor-not-allowed text-faint/70" : "text-muted hover:border-gold/40 hover:text-text"
+                }`}
+              >
+                {entry.label}
+                {entry.id === "withdraw" && (
+                  <span className="absolute -right-1 -top-2">
+                    <SoonBadge />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
+
+      <AnimatePresence>
+        {sheet && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Close wallet"
+              className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSheet(null)}
+            />
+            <motion.div
+              role="dialog"
+              aria-label="Wallet"
+              className="fixed inset-x-0 bottom-0 z-50 max-h-[78vh] overflow-y-auto overscroll-contain rounded-t-3xl border-t border-line-strong bg-panel p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:absolute lg:inset-0 lg:max-h-none lg:rounded-none lg:border-0 lg:p-5"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-semibold">Wallet</p>
+                <button
+                  type="button"
+                  onClick={() => setSheet(null)}
+                  aria-label="Close wallet"
+                  className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-text"
+                >
+                  <Close size={16} />
+                </button>
+              </div>
+              <WalletTabs wallet={wallet} tab={sheet} onTab={setSheet} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -194,7 +365,7 @@ export function HoldPlayButton({
             animate={{ opacity: 1, y: -lift * 24 }}
             exit={{ opacity: 0 }}
           >
-            <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${lift > 0.6 ? "border-gold bg-gold/20 text-gold-bright" : "border-line-strong bg-ink/90 text-muted"}`}>
+            <span className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${lift > 0.6 ? "border-gold bg-gold/20 text-gold-bright" : "border-line-strong bg-ink/90 text-muted"}`}>
               <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <rect x="5" y="11" width="14" height="10" rx="2" />
                 <path d="M8 11V7a4 4 0 018 0v4" />
@@ -207,8 +378,8 @@ export function HoldPlayButton({
       <button
         type="button"
         aria-disabled={!playable && auto === "off"}
-        className={`flex min-h-14 w-full touch-none select-none items-center justify-center gap-2 rounded-2xl px-4 text-base font-bold transition [-webkit-touch-callout:none] ${colors} ${
-          !playable && auto === "off" ? "opacity-45" : "enabled:hover:brightness-110"
+        className={`flex min-h-11 w-full touch-none select-none items-center justify-center gap-2 rounded-xl px-3 font-bold transition lg:min-h-14 lg:rounded-2xl [-webkit-touch-callout:none] ${colors} ${
+          !playable && auto === "off" ? "opacity-45" : "hover:brightness-110 active:scale-[0.98]"
         } ${auto !== "off" ? "ring-2 ring-white/60 ring-offset-2 ring-offset-ink" : ""}`}
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={(event) => {
@@ -270,15 +441,15 @@ export function AutoToggle({ auto, onAuto, disabled }: { auto: AutoMode; onAuto(
       aria-checked={on}
       onClick={() => onAuto(on ? "off" : "lock")}
       disabled={disabled && !on}
-      className={`flex min-h-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border px-3 text-[0.7rem] font-semibold uppercase tracking-wide transition disabled:opacity-40 ${
-        on ? "border-gold bg-gold/15 text-gold-bright" : "border-line text-muted hover:border-gold/40 hover:text-text"
+      className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 ${
+        on ? "border-gold bg-gold/10 text-gold-bright" : "border-line text-muted hover:border-gold/40 hover:text-text"
       }`}
     >
-      <span className={`h-3.5 w-6 rounded-full p-0.5 transition ${on ? "bg-gold" : "bg-white/15"}`}>
-        <span className={`block size-2.5 rounded-full bg-ink transition ${on ? "translate-x-2.5" : ""}`} />
+      <span className="flex items-center gap-2">
+        Auto play <Kbd>A</Kbd>
       </span>
-      <span className="flex items-center gap-1">
-        Auto <Kbd>A</Kbd>
+      <span className={`h-5 w-9 rounded-full p-0.5 transition ${on ? "bg-gold" : "bg-white/15"}`}>
+        <span className={`block size-4 rounded-full bg-ink transition ${on ? "translate-x-4" : ""}`} />
       </span>
     </button>
   );
