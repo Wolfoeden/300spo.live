@@ -4,6 +4,7 @@ import { aceArt } from "@/lib/game/card-art";
 import { SUIT_COLORS } from "@/lib/game/card-race";
 import { LOBBY_LIVE, LOBBY_SOON, type LobbyTile } from "@/lib/game/catalog";
 import { RobotFace } from "./arena";
+import { CockFigure } from "./cock-figure";
 
 /** The /play lobby: live games as large tiles, announced ones below. */
 export function Lobby({ onOpen }: { onOpen(slug: string): void }) {
@@ -191,12 +192,7 @@ function ChickenArt() {
           </div>
         ))}
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/game/chicken-cock.jpg"
-        alt="The blue cock"
-        className="absolute left-[16%] top-1/2 h-[46%] -translate-x-1/2 -translate-y-1/2 rounded-full ring-[3px] ring-gold-bright shadow-2xl"
-      />
+      <CockFigure className="absolute left-[16%] top-1/2 h-[62%] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_10px_18px_rgba(0,0,0,0.7)]" />
     </div>
   );
 }

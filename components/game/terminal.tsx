@@ -204,7 +204,7 @@ export function GamePanel({
           {prompt}
         </p>
         <div className={`grid gap-2 ${side ? "grid-cols-2" : "grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] lg:grid-cols-1"}`}>
-          {side ?? stepButton(-1)}
+          {side ? side : stepButton(-1)}
           <HoldPlayButton onPlay={play.onPlay} auto={play.auto} onAuto={play.onAuto} playable={play.playable} lockable={lockable} tone={play.tone}>
             <span className="flex min-w-0 items-baseline gap-2 leading-tight lg:flex-col lg:items-center lg:gap-0">
               <span className="truncate text-[0.62rem] font-semibold uppercase tracking-[0.1em] opacity-75 lg:text-[0.68rem]">{play.label}</span>

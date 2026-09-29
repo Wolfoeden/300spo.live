@@ -294,6 +294,7 @@ export function Arena({ game, bets, balance, enabled, play, loadRace, dealVersio
             onPick={pick}
             disabled={busy}
             canStart={canPlay && auto === "off"}
+            allowReplay={auto === "off"}
             bet={bet}
             onStart={() => void start()}
           />

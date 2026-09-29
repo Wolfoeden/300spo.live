@@ -49,6 +49,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const [auto, setAuto] = useState<AutoMode>("off");
   const [autoNote, setAutoNote] = useState<{ id: number; text: string } | null>(null);
   const [lastWin, setLastWin] = useState<number | null>(null);
+  // Bumped by the replay button: all four finished races run again.
+  const [replay, setReplay] = useState(0);
   const timer = useRef<number | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   // The board the number keys pick for; it moves on after each pick.
@@ -237,12 +239,18 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
         kbd: canStart ? <Kbd>Enter</Kbd> : null,
       }}
       extra={
-        canSkip &&
-        auto === "off" && (
+        auto !== "off" ? null : canSkip ? (
           <button className="inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
             Skip to the finish <Kbd>S</Kbd>
           </button>
-        )
+        ) : phase === "done" && outcome ? (
+          <button
+            className="inline-flex items-center gap-1.5 self-center rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold-bright hover:bg-gold/20"
+            onClick={() => setReplay((count) => count + 1)}
+          >
+            ↺ Replay races
+          </button>
+        ) : null
       }
       lastWin={lastWin}
       balance={shownBalance}
@@ -283,6 +291,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
                   picked={choice}
                   onPick={(suit) => pick(board, suit)}
                   disabled={busy}
+                  replay={replay}
+                  allowReplay={false}
                 />
               </div>
               <AnimatePresence>

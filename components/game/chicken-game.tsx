@@ -9,6 +9,7 @@ import { DIFFICULTIES, hitChance } from "@/lib/game/chicken";
 import { Spinner } from "../icons";
 import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
+import { CockFigure } from "./cock-figure";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
 
@@ -40,7 +41,6 @@ type Props = {
   wallet: WalletPanels;
 };
 
-const COCK = "/game/chicken-cock.jpg";
 
 const subscribeResize = (callback: () => void) => {
   window.addEventListener("resize", callback);
@@ -255,7 +255,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
         kbd: canGo ? <Kbd>Space</Kbd> : null,
       }}
       side={
-        open && (
+        open ? (
           <button
             type="button"
             onClick={take}
@@ -267,7 +267,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
             </span>
             <span className="text-base tabular-nums lg:text-xl">{formatTokenAmount(BigInt(collectable))}</span>
           </button>
-        )
+        ) : undefined
       }
       lastWin={lastWin}
       balance={shownBalance}
@@ -334,12 +334,9 @@ function Road({
         className="relative h-full min-h-56 overflow-hidden bg-[linear-gradient(180deg,#1b1c20,#141518)]"
         style={{ width: sidewalk * 2 + lanes * lane, minWidth: "100%" }}
       >
-        {/* start sidewalk with the 300 coin */}
+        {/* start sidewalk: the cock waits here */}
         <div className="absolute inset-y-0 left-0 border-r-4 border-[#2c2d33] bg-[#232429]" style={{ width: sidewalk }}>
-          <div className="absolute inset-x-0 top-1/2 mx-auto grid -translate-y-1/2 place-items-center" style={{ width: lane * 0.8, height: lane * 0.8 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/300-logo.jpg" alt="" className="size-full rounded-full opacity-90 ring-2 ring-gold/60" />
-          </div>
+          <span className="absolute inset-x-0 bottom-3 text-center font-mono text-[0.6rem] uppercase tracking-[0.2em] text-faint">Start</span>
         </div>
 
         {Array.from({ length: lanes }, (_, index) => {
@@ -371,10 +368,13 @@ function Road({
                   <Barrier />
                 </motion.div>
               )}
-              <div className="absolute inset-x-0 top-1/2 grid -translate-y-1/2 place-items-center">
-                <Plate value={multipliers[index]} size={lane * 0.74} state={crash ? "crash" : passed ? "passed" : next ? "next" : "ahead"} />
-              </div>
-              {crash && <CrashCar token={lane * 0.62} />}
+              {/* The cock stands on his own lane; its value is in the label under him. */}
+              {(number !== position || crash) && (
+                <div className="absolute inset-x-0 top-1/2 grid -translate-y-1/2 place-items-center">
+                  <Plate value={multipliers[index]} size={lane * 0.74} state={crash ? "crash" : passed ? "passed" : next ? "next" : "ahead"} />
+                </div>
+              )}
+              {crash && <CrashCar token={lane * 1.08} />}
             </div>
           );
         })}
@@ -386,7 +386,7 @@ function Road({
 
         <motion.div
           className="absolute top-1/2 z-10"
-          style={{ width: lane * 0.62, height: lane * 0.62, marginLeft: -(lane * 0.31), marginTop: -(lane * 0.31) }}
+          style={{ width: lane * 0.9, height: lane * 1.08, marginLeft: -(lane * 0.45), marginTop: -(lane * 0.54) }}
           initial={false}
           animate={{
             left: centerOf(position),
@@ -398,16 +398,11 @@ function Road({
           transition={{ type: "spring", stiffness: 260, damping: 24, delay: lost ? 0.35 : 0 }}
         >
           <motion.div key={position} animate={reduce ? {} : { y: [0, -16, 0] }} transition={{ duration: 0.35 }} className="size-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={COCK}
-              alt="The blue cock"
-              className="size-full rounded-full object-cover shadow-[0_10px_30px_-8px_rgba(0,0,0,0.8)] ring-[3px] ring-gold-bright"
-            />
+            <CockFigure step={position} mood={lost ? "hit" : round?.status === "collected" ? "win" : "idle"} className="size-full drop-shadow-[0_8px_14px_rgba(0,0,0,0.6)]" />
           </motion.div>
           {/* The cock stands on his lane's plate, so its multiplier sits under him. */}
           {position > 0 && !lost && multipliers[position - 1] && (
-            <span className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#1f2a44] px-2 py-1 text-xs font-bold tabular-nums text-white shadow-lg ring-1 ring-[#8fb1ff]/60 sm:text-sm">
+            <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#1f2a44] px-2 py-1 text-xs font-bold tabular-nums text-white shadow-lg ring-1 ring-[#8fb1ff]/60 sm:text-sm">
               {formatMultiplier(multipliers[position - 1])}
             </span>
           )}
