@@ -34,15 +34,11 @@ const amount = (value: string | null) => BigInt(value ?? "0");
  * can claim. Without a wallet it shows the rules and asks to connect.
  */
 export function DripCard({ className = "" }: { className?: string }) {
-  const { wallet, balance, auth, signIn, openDialog } = useWallet();
+  const { wallet, balance } = useWallet();
   const stake = wallet?.networkId === 1 ? (wallet.stakeAddress ?? null) : null;
   const [rules, setRules] = useState<Config | null>(null);
   const [status, setStatus] = useState<DripStatus | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [claiming, setClaiming] = useState(false);
-  const [claimed, setClaimed] = useState(false);
-  const [claimError, setClaimError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,7 +56,7 @@ export function DripCard({ className = "" }: { className?: string }) {
     let active = true;
     fetchChain<DripStatus>(`/api/drip/status?stake=${encodeURIComponent(stake)}`).then(
       (data) => active && setStatus(data),
-      () => active && setFailed(true),
+      () => undefined,
     );
     fetchChain<Account>(`/api/chain/account?stake=${encodeURIComponent(stake)}`).then(
       (data) => active && setAccount(data),
@@ -81,34 +77,6 @@ export function DripCard({ className = "" }: { className?: string }) {
   // The tier this wallet reaches right now; the snapshot at the next epoch decides.
   const reached: Tier | -1 | null =
     holds === null || delegated === null ? null : !holds ? -1 : delegated && lovelace >= tier2 ? 2 : delegated && lovelace >= tier1 ? 1 : 0;
-  const byUnit = new Map(config?.rewards.map((reward) => [reward.unit, reward]));
-  const totals = stake ? (status?.totals ?? []).filter((total) => byUnit.has(total.unit)) : [];
-  const claimable = totals.filter((total) => amount(total.claimable) > 0n);
-
-  const claim = async () => {
-    setClaiming(true);
-    setClaimError(null);
-    try {
-      // Claiming needs the wallet session of this wallet: one signed message, no transaction.
-      const post = () => fetch("/api/drip/claim", { method: "POST", headers: { "content-type": "application/json" }, body: "{}", credentials: "same-origin" });
-      if (auth.status !== "signed-in" || auth.identity !== stake) await signIn();
-      let response = await post();
-      if (response.status === 401) {
-        // The session ran out since the page loaded.
-        await signIn();
-        response = await post();
-      }
-      const data = (await response.json().catch(() => ({}))) as DripStatus & { error?: string };
-      if (!response.ok) throw new Error(data.error === "not_signed_in" ? "Sign the message in your wallet to claim." : "Claiming failed. Try again.");
-      setStatus(data);
-      setClaimed(true);
-    } catch (cause) {
-      setClaimError(cause instanceof Error ? cause.message : "Claiming failed. Try again.");
-    } finally {
-      setClaiming(false);
-    }
-  };
-
   const tiers: { tier: Tier; name: string; requirement: string; fallback: string }[] = [
     { tier: 0, name: "Holder", requirement: `Hold ${formatTokenAmount(minTokens)} 300`, fallback: "300 and meme coins from the treasury" },
     { tier: 1, name: "Staker", requirement: `Hold 300 and delegate ${ada(tier1)}`, fallback: "ADA, NIGHT and REALFI" },
@@ -182,65 +150,125 @@ export function DripCard({ className = "" }: { className?: string }) {
       </div>
 
       <div className="mt-5 rounded-2xl border border-gold/30 bg-gold/[0.05] p-4 sm:p-5">
-        {!wallet ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-muted">Connect your wallet to see what you have earned and claim it.</p>
-            <button className="btn btn-gold !px-4 !py-2 text-sm" onClick={() => openDialog(() => undefined)}>
-              Connect wallet
-            </button>
-          </div>
-        ) : !stake ? (
-          <p className="text-sm text-muted">Switch your wallet to Cardano mainnet to see your drip rewards.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="font-semibold">Your rewards</p>
-              {claimable.length > 0 && (
-                <button className="btn btn-gold !px-4 !py-2 text-sm" onClick={claim} disabled={claiming}>
-                  {claiming && <Spinner size={14} />}
-                  {claiming ? "Check your wallet…" : "Claim rewards"}
-                </button>
-              )}
-            </div>
-            {totals.length ? (
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {totals.map((total) => {
-                  const reward = byUnit.get(total.unit)!;
-                  return (
-                    <div key={total.unit} className="glass rounded-2xl p-4 text-sm">
-                      <p className="font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint">{reward.label}</p>
-                      <p className="mt-1">
-                        <span className="text-lg font-semibold text-text">{formatUnits(amount(total.claimable), reward.decimals)}</span> to claim
-                      </p>
-                      {amount(total.pending) > 0n && <p className="text-muted">{formatUnits(amount(total.pending), reward.decimals)} claimed, on the way</p>}
-                      <p className="text-muted">{formatUnits(amount(total.paid), reward.decimals)} received</p>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-muted">
-                {reached === -1
-                  ? `This wallet holds ${formatTokenAmount(balance!.token300)} 300 — ${formatTokenAmount(minTokens - balance!.token300)} more to join the drip.`
-                  : "Nothing earned yet. Rewards are added with the snapshot at the start of each epoch."}
-              </p>
-            )}
-            {claimed && !claimError && (
-              <p className="mt-3 flex items-center gap-2 text-sm text-positive">
-                <Check size={14} /> Claimed. Your rewards are sent to your wallet with the next payout.
-              </p>
-            )}
-            {claimError && <p className="mt-3 text-sm text-danger">{claimError}</p>}
-            {status?.lastSnapshot && (
-              <p className="mt-3 text-xs text-faint">
-                Epoch {status.lastSnapshot.epoch}: {status.lastSnapshot.eligible} wallets in the drip
-                {status.includedInLastSnapshot ? ` — including this one (${tiers[status.tierInLastSnapshot ?? 0].name}).` : "."}
-              </p>
-            )}
-            {failed && <p className="mt-3 text-sm text-danger">Drip status is unavailable right now.</p>}
-          </>
-        )}
+        <RewardsPanel />
       </div>
     </section>
+  );
+}
+
+const TIER_NAMES = ["Holder", "Staker", "Staker+"] as const;
+
+/** What the connected wallet has earned in the drip, and the claim for it. */
+export function RewardsPanel() {
+  const { wallet, balance, auth, signIn, openDialog } = useWallet();
+  const stake = wallet?.networkId === 1 ? (wallet.stakeAddress ?? null) : null;
+  const [status, setStatus] = useState<DripStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!stake) return;
+    let active = true;
+    fetchChain<DripStatus>(`/api/drip/status?stake=${encodeURIComponent(stake)}`).then(
+      (data) => active && setStatus(data),
+      () => active && setFailed(true),
+    );
+    return () => {
+      active = false;
+    };
+  }, [stake]);
+
+  const byUnit = new Map(status?.config.rewards.map((reward) => [reward.unit, reward]));
+  const totals = (status?.totals ?? []).filter((total) => byUnit.has(total.unit));
+  const claimable = totals.filter((total) => amount(total.claimable) > 0n);
+  const minTokens = BigInt(status?.config.minTokens ?? 3_000_000);
+  const short = balance && status ? balance.token300 < minTokens : false;
+
+  const claim = async () => {
+    setClaiming(true);
+    setClaimError(null);
+    try {
+      // Claiming needs the wallet session of this wallet: one signed message, no transaction.
+      const post = () => fetch("/api/drip/claim", { method: "POST", headers: { "content-type": "application/json" }, body: "{}", credentials: "same-origin" });
+      if (auth.status !== "signed-in" || auth.identity !== stake) await signIn();
+      let response = await post();
+      if (response.status === 401) {
+        // The session ran out since the page loaded.
+        await signIn();
+        response = await post();
+      }
+      const data = (await response.json().catch(() => ({}))) as DripStatus & { error?: string };
+      if (!response.ok) throw new Error(data.error === "not_signed_in" ? "Sign the message in your wallet to claim." : "Claiming failed. Try again.");
+      setStatus(data);
+      setClaimed(true);
+    } catch (cause) {
+      setClaimError(cause instanceof Error ? cause.message : "Claiming failed. Try again.");
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  if (!wallet) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <p className="text-muted">Connect your wallet to see what you have earned and claim it.</p>
+        <button className="btn btn-gold !px-4 !py-2 text-sm" onClick={() => openDialog(() => undefined)}>
+          Connect wallet
+        </button>
+      </div>
+    );
+  }
+  if (!stake) return <p className="text-sm text-muted">Switch your wallet to Cardano mainnet to see your drip rewards.</p>;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="font-semibold">Your rewards</p>
+        {claimable.length > 0 && (
+          <button className="btn btn-gold !px-4 !py-2 text-sm" onClick={claim} disabled={claiming}>
+            {claiming && <Spinner size={14} />}
+            {claiming ? "Check your wallet…" : "Claim rewards"}
+          </button>
+        )}
+      </div>
+      {totals.length ? (
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]">
+          {totals.map((total) => {
+            const reward = byUnit.get(total.unit)!;
+            return (
+              <div key={total.unit} className="glass rounded-2xl p-3 text-sm">
+                <p className="font-mono text-[0.66rem] uppercase tracking-[0.16em] text-faint">{reward.label}</p>
+                <p className="mt-1">
+                  <span className="text-lg font-semibold text-text">{formatUnits(amount(total.claimable), reward.decimals)}</span> to claim
+                </p>
+                {amount(total.pending) > 0n && <p className="text-muted">{formatUnits(amount(total.pending), reward.decimals)} on the way</p>}
+                <p className="text-muted">{formatUnits(amount(total.paid), reward.decimals)} received</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted">
+          {short
+            ? `This wallet holds ${formatTokenAmount(balance!.token300)} 300 — ${formatTokenAmount(minTokens - balance!.token300)} more to join the drip.`
+            : "Nothing earned yet. Rewards are added with the snapshot at the start of each epoch."}
+        </p>
+      )}
+      {claimed && !claimError && (
+        <p className="mt-3 flex items-center gap-2 text-sm text-positive">
+          <Check size={14} /> Claimed. Your rewards are sent to your wallet with the next payout.
+        </p>
+      )}
+      {claimError && <p className="mt-3 text-sm text-danger">{claimError}</p>}
+      {status?.lastSnapshot && (
+        <p className="mt-3 text-xs text-faint">
+          Epoch {status.lastSnapshot.epoch}: {status.lastSnapshot.eligible} wallets in the drip
+          {status.includedInLastSnapshot ? ` — including this one (${TIER_NAMES[status.tierInLastSnapshot ?? 0]}).` : "."}
+        </p>
+      )}
+      {failed && <p className="mt-3 text-sm text-danger">Drip status is unavailable right now.</p>}
+    </div>
   );
 }

@@ -8,7 +8,7 @@ import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
 import { TOKEN_300 } from "@/lib/site";
-import { DripCard } from "../drip/drip-card";
+import { DripCard, RewardsPanel } from "../drip/drip-card";
 import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
 import { useDelegation } from "../wallet/delegation";
@@ -20,6 +20,7 @@ import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-gam
 import { ModeSwitch } from "./game-frame";
 import { Lobby } from "./lobby";
 import { QuadRace, type MultiRaceResult, type RaceDeals } from "./quad-race";
+import { Terminal, openTerminalTab } from "./terminal";
 
 const UNIT_300 = TOKEN_300.policyId + TOKEN_300.assetNameHex;
 const POLL_MS = 20_000;
@@ -236,14 +237,22 @@ export function GamePage() {
     ) : null;
 
   const game = state && tile?.game ? state.games.find((entry) => entry.id === tile.game) : undefined;
-  const common = state && {
-    bets: state.bets,
-    balance: state.balance,
-    enabled: state.enabled,
-    dealVersion,
-    onSettled: settle,
-    onBack: () => goTo(""),
+  const walletPanels = state && {
+    deposit: <DepositPanel state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />,
+    rewards: <RewardsPanel />,
   };
+  const common = state &&
+    walletPanels && {
+      bets: state.bets,
+      balance: state.balance,
+      enabled: state.enabled,
+      dealVersion,
+      onSettled: settle,
+      onBack: () => goTo(""),
+      wallet: walletPanels,
+    };
+  // On phones the game terminal is docked to the bottom of the screen; keep the page clear of it.
+  const docked = !!tile && !gate && !!common;
 
   return (
     <div className="relative">
@@ -253,7 +262,7 @@ export function GamePage() {
         <div className="absolute -top-40 right-[-10%] h-[30rem] w-[30rem] rounded-full bg-gold/[0.12] blur-[120px]" />
       </div>
 
-      <div className="container-site relative pb-24 pt-24 sm:pt-28">
+      <div className={`container-site relative pt-24 sm:pt-28 ${docked ? "pb-80 lg:pb-24" : "pb-24"}`}>
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="kicker">300 Games</p>
@@ -315,6 +324,7 @@ export function GamePage() {
               enabled={common.enabled}
               onSettled={common.onSettled}
               onBack={common.onBack}
+              wallet={common.wallet}
               load={loadChicken}
               start={startChicken}
               step={stepChicken}
@@ -350,7 +360,8 @@ export function GamePage() {
             </h2>
             <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
               <BalanceCard state={state} walletTokens={balance?.token300 ?? null} />
-              <DepositCard state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />
+              {/* In a game the same tabs live in its terminal. */}
+              {!docked && walletPanels && <Terminal docked={false} deposit={walletPanels.deposit} rewards={walletPanels.rewards} />}
               <History state={state} />
               <FairnessSection state={state} onRotated={() => setDealVersion((version) => version + 1)} />
             </div>
@@ -402,9 +413,9 @@ function AccountBar({
         </p>
         <p className="text-[0.62rem] text-faint">Game credit only · no withdrawals</p>
       </div>
-      <a href="#deposit" className="btn btn-ghost !px-4 !py-2 text-sm">
+      <button type="button" onClick={() => openTerminalTab("deposit")} className="btn btn-ghost !px-4 !py-2 text-sm">
         Deposit
-      </a>
+      </button>
     </div>
   );
 }
@@ -511,7 +522,7 @@ type DepositPhase =
   | { name: "submitted"; txHash: string }
   | { name: "error"; message: string };
 
-function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; walletTokens: bigint | null; onDeposited(): Promise<void> }) {
+function DepositPanel({ state, walletTokens, onDeposited }: { state: GameState; walletTokens: bigint | null; onDeposited(): Promise<void> }) {
   const { wallet, getApi, refreshBalance } = useWallet();
   const [amount, setAmount] = useState(String(state.minDeposit));
   const [accepted, setAccepted] = useState(false);
@@ -578,16 +589,16 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
   const quickAmounts = [state.minDeposit, 3_000, 30_000, 300_000].filter((value, index, all) => all.indexOf(value) === index && value >= state.minDeposit);
 
   return (
-    <section id="deposit" className="glass scroll-mt-24 rounded-3xl p-6 sm:p-8">
-      <h2 className="flex items-center gap-2 text-xl font-semibold">
+    <div id="deposit">
+      <h3 className="flex items-center gap-2 font-semibold">
         Deposit 300 tokens
         <InfoBubble label="How deposits work">
           Your wallet sends the tokens to the game treasury with a reference. They are credited after about 2–4 minutes, once the transfer is 5
           blocks deep.
         </InfoBubble>
-      </h2>
+      </h3>
 
-      <label className="mt-5 block text-xs text-faint" htmlFor="deposit-amount">
+      <label className="mt-4 block text-xs text-faint" htmlFor="deposit-amount">
         Amount
       </label>
       <div className="mt-2 flex gap-2">
@@ -650,7 +661,7 @@ function DepositCard({ state, walletTokens, onDeposited }: { state: GameState; w
           </a>
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
