@@ -1,4 +1,6 @@
 import { LiveDataProvider } from "@/components/data/live-data";
+import { JsonLd } from "@/components/json-ld";
+import { homeSchema } from "@/lib/seo";
 import { DripSection } from "@/components/drip/drip-section";
 import { Guide } from "@/components/guide";
 import { Hero } from "@/components/hero";
@@ -11,6 +13,7 @@ import { WelcomeCredit } from "@/components/welcome-credit";
 export default function HomePage() {
   return (
     <LiveDataProvider>
+      <JsonLd data={homeSchema} />
       <DelegationProvider>
       <SiteHeader />
       <main>
