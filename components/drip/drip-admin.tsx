@@ -4,28 +4,46 @@ import { useCallback, useEffect, useState } from "react";
 import { bytesToHex } from "@/lib/cardano/address";
 import { assembleSignedTx, parseUtxo, type Utxo } from "@/lib/cardano/tx";
 import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib/chain-client";
-import { formatUnits, parseUnits, type Distribution } from "@/lib/drip/allocate";
+import { formatUnits, parseUnits, type Distribution, type Tier } from "@/lib/drip/allocate";
 import { buildPayout, type PayoutRecipient } from "@/lib/drip/payout";
 import { formatAdaExact } from "@/lib/format";
 import { ArrowUpRight, Check, Close, Plus, Spinner } from "../icons";
 import { useWallet } from "../wallet/wallet-provider";
 
-type Reward = { unit: string; label: string; decimals: number; perEpoch: string };
+type Reward = { unit: string; label: string; decimals: number; perEpoch: string; tier: Tier; distribution: Distribution };
 type Overview = {
-  config: { enabled: boolean; minTokens: number; distribution: Distribution; lastSnapshotEpoch: number | null; rewards: Reward[] };
+  config: {
+    enabled: boolean;
+    minTokens: number;
+    tier1Lovelace: number;
+    tier2Lovelace: number;
+    excluded: string[];
+    lastSnapshotEpoch: number | null;
+    rewards: Reward[];
+  };
   lastRunAt: string | null;
   lastRunResult: Record<string, unknown> | null;
-  snapshots: { epoch: number; taken_at: string; holders: number; delegators: number; eligible: number; distribution: string }[];
+  snapshots: {
+    epoch: number;
+    taken_at: string;
+    holders: number;
+    delegators: number;
+    eligible: number;
+    distribution: string;
+    tiers: { holders: number; tier1: number; tier2: number } | null;
+  }[];
   unpaid: { unit: string; amount: string; wallets: number }[];
   payouts: { tx_hash: string; status: string; recipients: number; created_at: string; confirmed_at: string | null }[];
 };
-type RewardRow = { unit: string; label: string; decimals: string; amount: string };
+type RewardRow = { unit: string; label: string; decimals: string; amount: string; tier: Tier; distribution: Distribution };
+type TreasuryToken = { unit: string; label: string; decimals: number; quantity: string };
 
 const DISTRIBUTIONS: { value: Distribution; label: string }[] = [
-  { value: "equal", label: "Equal share per wallet" },
-  { value: "tokens", label: "By 300 tokens held" },
+  { value: "equal", label: "Equal share" },
+  { value: "tokens", label: "By 300 held" },
   { value: "stake", label: "By ADA delegated" },
 ];
+const LOVELACE_PER_ADA = 1_000_000;
 
 const call = async <T,>(body?: unknown): Promise<T> => {
   const response = await fetch("/api/admin/drip", {
@@ -119,16 +137,36 @@ function Card({ title, children, action }: { title: string; children: React.Reac
 function Settings({ overview, onSaved }: { overview: Overview; onSaved(next: Overview): void }) {
   const [enabled, setEnabled] = useState(overview.config.enabled);
   const [minTokens, setMinTokens] = useState(String(overview.config.minTokens));
-  const [distribution, setDistribution] = useState<Distribution>(overview.config.distribution);
+  const [tier1Ada, setTier1Ada] = useState(String(overview.config.tier1Lovelace / LOVELACE_PER_ADA));
+  const [tier2Ada, setTier2Ada] = useState(String(overview.config.tier2Lovelace / LOVELACE_PER_ADA));
+  const [excluded, setExcluded] = useState(overview.config.excluded.join("\n"));
   const [rows, setRows] = useState<RewardRow[]>(
     overview.config.rewards.map((reward) => ({
       unit: reward.unit,
       label: reward.label,
       decimals: String(reward.decimals),
       amount: formatUnits(BigInt(reward.perEpoch), reward.decimals).replace(/,/g, ""),
+      tier: reward.tier,
+      distribution: reward.distribution,
     })),
   );
+  const [treasury, setTreasury] = useState<TreasuryToken[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tierNames = [`Holders (${minTokens || "?"} 300)`, `Stakers ≥ ${tier1Ada || "?"} ADA`, `Stakers+ ≥ ${tier2Ada || "?"} ADA`];
+
+  const loadTreasury = async () => {
+    setError(null);
+    try {
+      setTreasury((await call<{ tokens: TreasuryToken[] }>({ action: "treasury" })).tokens);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not read the treasury.");
+    }
+  };
+  const addToken = (token: TreasuryToken) =>
+    setRows((current) => [
+      ...current,
+      { unit: token.unit, label: token.label.slice(0, 20), decimals: String(token.decimals), amount: "0", tier: 0, distribution: "tokens" },
+    ]);
   const [saving, setSaving] = useState(false);
 
   const update = (index: number, patch: Partial<RewardRow>) => setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -140,11 +178,28 @@ function Settings({ overview, onSaved }: { overview: Overview; onSaved(next: Ove
       const decimals = Number(row.decimals);
       const perEpoch = parseUnits(row.amount || "0", Number.isInteger(decimals) ? decimals : 0);
       if (perEpoch === null || !Number.isInteger(decimals)) return setError(`Check the amount for ${row.label || "a reward"}.`);
-      rewards.push({ unit: row.unit.trim().toLowerCase(), label: row.label.trim(), decimals, perEpoch: perEpoch.toString() });
+      rewards.push({
+        unit: row.unit.trim().toLowerCase(),
+        label: row.label.trim(),
+        decimals,
+        perEpoch: perEpoch.toString(),
+        tier: row.tier,
+        distribution: row.distribution,
+      });
     }
     setSaving(true);
     try {
-      onSaved(await call<Overview>({ action: "settings", enabled, minTokens: minTokens.replace(/[^\d]/g, ""), distribution, rewards }));
+      onSaved(
+        await call<Overview>({
+          action: "settings",
+          enabled,
+          minTokens: minTokens.replace(/[^\d]/g, ""),
+          tier1Ada: tier1Ada.replace(/[^\d]/g, ""),
+          tier2Ada: tier2Ada.replace(/[^\d]/g, ""),
+          excluded: excluded.split(/[\s,]+/).filter(Boolean),
+          rewards,
+        }),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Saving failed.");
     } finally {
@@ -154,31 +209,45 @@ function Settings({ overview, onSaved }: { overview: Overview; onSaved(next: Ove
 
   return (
     <Card title="Drip settings">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <label className="flex items-center gap-3 rounded-2xl border border-line p-3 text-sm">
           <input type="checkbox" className="size-4 accent-[var(--color-gold)]" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
           Drip enabled (snapshot every epoch)
         </label>
         <label className="text-xs text-faint">
-          Minimum 300 tokens held
+          Holders: minimum 300 held
           <input className={`${input} mt-1`} inputMode="numeric" value={minTokens} onChange={(event) => setMinTokens(event.target.value)} />
         </label>
         <label className="text-xs text-faint">
-          Split between eligible wallets
-          <select className={`${input} mt-1`} value={distribution} onChange={(event) => setDistribution(event.target.value as Distribution)}>
-            {DISTRIBUTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          Stakers: minimum ADA delegated
+          <input className={`${input} mt-1`} inputMode="numeric" value={tier1Ada} onChange={(event) => setTier1Ada(event.target.value)} />
+        </label>
+        <label className="text-xs text-faint">
+          Stakers+: minimum ADA delegated
+          <input className={`${input} mt-1`} inputMode="numeric" value={tier2Ada} onChange={(event) => setTier2Ada(event.target.value)} />
         </label>
       </div>
+      <label className="mt-4 block text-xs text-faint">
+        Never paid (stake1… addresses, one per line — treasury and distribution wallets)
+        <textarea
+          className={`${input} mt-1 h-20 font-mono text-xs`}
+          spellCheck={false}
+          value={excluded}
+          onChange={(event) => setExcluded(event.target.value)}
+        />
+      </label>
 
       <h3 className="mt-6 text-sm font-semibold">Rewards per epoch (about every 5 days)</h3>
+      <p className="mt-1 text-xs text-faint">
+        A line goes to its tier and every tier above it: stakers also get the holder lines, stakers+ all lines. List a unit again in a higher tier to
+        give that tier more on top.
+      </p>
       <div className="mt-3 space-y-2">
         {rows.map((row, index) => (
-          <div key={index} className="grid grid-cols-1 gap-2 rounded-2xl border border-line p-3 md:grid-cols-[8rem_minmax(0,1fr)_5rem_10rem_auto] md:items-end">
+          <div
+            key={index}
+            className="grid grid-cols-1 gap-2 rounded-2xl border border-line p-3 md:grid-cols-[7rem_minmax(0,1fr)_4.5rem_8rem_11rem_9rem_auto] md:items-end"
+          >
             <label className="text-xs text-faint">
               Label
               <input className={`${input} mt-1`} value={row.label} onChange={(event) => update(index, { label: event.target.value })} />
@@ -195,15 +264,65 @@ function Settings({ overview, onSaved }: { overview: Overview; onSaved(next: Ove
               Per epoch
               <input className={`${input} mt-1`} inputMode="decimal" value={row.amount} onChange={(event) => update(index, { amount: event.target.value })} />
             </label>
+            <label className="text-xs text-faint">
+              Tier
+              <select className={`${input} mt-1`} value={row.tier} onChange={(event) => update(index, { tier: Number(event.target.value) as Tier })}>
+                {tierNames.map((name, tier) => (
+                  <option key={tier} value={tier}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-faint">
+              Split
+              <select
+                className={`${input} mt-1`}
+                value={row.distribution}
+                onChange={(event) => update(index, { distribution: event.target.value as Distribution })}
+              >
+                {DISTRIBUTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button className="btn btn-ghost !px-3 !py-2 text-xs" onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>
               Remove
             </button>
           </div>
         ))}
       </div>
-      <button className="btn btn-ghost mt-3 !px-3 !py-2 text-xs" onClick={() => setRows((current) => [...current, { unit: "", label: "", decimals: "0", amount: "0" }])}>
-        <Plus size={14} /> Add reward token
-      </button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          className="btn btn-ghost !px-3 !py-2 text-xs"
+          onClick={() => setRows((current) => [...current, { unit: "", label: "", decimals: "0", amount: "0", tier: 1, distribution: "equal" }])}
+        >
+          <Plus size={14} /> Add reward token
+        </button>
+        <button className="btn btn-ghost !px-3 !py-2 text-xs" onClick={loadTreasury}>
+          Tokens in the treasury
+        </button>
+      </div>
+      {treasury && (
+        <div className="mt-3 rounded-2xl border border-line p-3">
+          <p className="text-xs text-faint">Fungible tokens the treasury holds. Adding one creates a holder line split by 300 held; then set its amount per epoch.</p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {treasury.map((token) => {
+              const listed = rows.some((row) => row.unit === token.unit && row.tier === 0);
+              return (
+                <li key={token.unit}>
+                  <button className="btn btn-ghost !px-3 !py-1.5 text-xs" disabled={listed} onClick={() => addToken(token)} title={token.unit}>
+                    {listed ? <Check size={12} /> : <Plus size={12} />} {token.label} · {formatUnits(BigInt(token.quantity), token.decimals)}
+                  </button>
+                </li>
+              );
+            })}
+            {!treasury.length && <li className="text-xs text-faint">No fungible tokens found, or no treasury address in the game settings.</li>}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <button className="btn btn-gold" onClick={save} disabled={saving}>
@@ -258,7 +377,7 @@ function Status({ overview, describe, onRun }: { overview: Overview; describe(un
               <th className="py-2 font-medium">Eligible</th>
               <th className="py-2 font-medium">300 holders</th>
               <th className="py-2 font-medium">Delegators</th>
-              <th className="py-2 font-medium">Split</th>
+              <th className="py-2 font-medium">Holders · Stakers · Stakers+</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -268,7 +387,9 @@ function Status({ overview, describe, onRun }: { overview: Overview; describe(un
                 <td className="py-2 tabular-nums">{snapshot.eligible}</td>
                 <td className="py-2 tabular-nums">{snapshot.holders}</td>
                 <td className="py-2 tabular-nums">{snapshot.delegators}</td>
-                <td className="py-2">{snapshot.distribution}</td>
+                <td className="py-2 tabular-nums">
+                  {snapshot.tiers ? `${snapshot.tiers.holders} · ${snapshot.tiers.tier1} · ${snapshot.tiers.tier2}` : snapshot.distribution}
+                </td>
               </tr>
             ))}
             {!overview.snapshots.length && (

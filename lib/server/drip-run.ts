@@ -1,4 +1,4 @@
-import { allocate, eligibleWallets, type Delegator, type Holder } from "../drip/allocate";
+import { allocate, eligibleWallets, tierCounts, type Delegator, type Holder } from "../drip/allocate";
 import { REQUIRED_CONFIRMATIONS } from "../game/treasury";
 import { POOL_ID, TOKEN_300 } from "../site";
 import { dripDb } from "./drip-db";
@@ -57,19 +57,25 @@ export const takeSnapshot = async () => {
     paged<Holder>(`asset_addresses?_asset_policy=${TOKEN_300.policyId}&_asset_name=${TOKEN_300.assetNameHex}`),
     paged<Delegator>(`pool_delegators?_pool_bech32=${POOL_ID}`),
   ]);
-  const wallets = eligibleWallets(holders, delegators, BigInt(config.minTokens));
+  const wallets = eligibleWallets(holders, delegators, {
+    minTokens: BigInt(config.minTokens),
+    tier1: BigInt(config.tier1Lovelace),
+    tier2: BigInt(config.tier2Lovelace),
+    excluded: config.excluded,
+  });
   const allocations = allocate(
     wallets,
-    config.rewards.map((reward) => ({ unit: reward.unit, perEpoch: BigInt(reward.perEpoch) })),
-    config.distribution,
+    config.rewards.map((reward) => ({ unit: reward.unit, perEpoch: BigInt(reward.perEpoch), tier: reward.tier, distribution: reward.distribution })),
   );
   const summary = {
     holders: new Set(holders.map((holder) => holder.stake_address ?? holder.payment_address)).size,
     delegators: delegators.length,
     eligible: wallets.length,
-    distribution: config.distribution,
+    tiers: { ...tierCounts(wallets), tier1Lovelace: config.tier1Lovelace, tier2Lovelace: config.tier2Lovelace },
     minTokens: config.minTokens,
-    budgets: Object.fromEntries(config.rewards.map((reward) => [reward.label, reward.perEpoch])),
+    budgets: config.rewards
+      .filter((reward) => BigInt(reward.perEpoch) > 0n)
+      .map((reward) => ({ label: reward.label, tier: reward.tier, distribution: reward.distribution, perEpoch: reward.perEpoch })),
   };
   const recorded = await dripDb.recordSnapshot(epoch, summary, allocations);
   return { snapshot: recorded, epoch, eligible: wallets.length, allocations: allocations.length };
