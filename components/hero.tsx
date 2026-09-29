@@ -4,6 +4,7 @@ import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } fro
 import { LINKS } from "@/lib/site";
 import { capitalize, formatAdaCompact, formatCompact, formatInteger } from "@/lib/format";
 import { useLiveData } from "./data/live-data";
+import { PARTNER_LINKS } from "./ads";
 import { ArrowRight } from "./icons";
 import { CountUp } from "./motion";
 import { DelegateButton } from "./wallet/delegation";
@@ -38,15 +39,6 @@ export function Hero() {
             <br />
             with <span className="text-gold-gradient">300.</span>
           </motion.h1>
-          <motion.p
-            className="mt-6 max-w-xl text-lg leading-relaxed text-muted"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.12, ease }}
-          >
-            Independent stake pool infrastructure, non-custodial ADA delegation and responsible DRep representation in one transparent
-            Cardano home.
-          </motion.p>
           <motion.div
             className="mt-8 flex flex-wrap gap-3"
             initial={{ opacity: 0, y: 20 }}
@@ -69,22 +61,27 @@ export function Hero() {
               <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
             </a>
           </motion.div>
-          <motion.a
-            href="#partners"
-            className="mt-5 inline-flex flex-wrap items-center gap-3 text-sm text-muted transition hover:text-text"
+          <motion.div
+            className="mt-5 flex flex-wrap items-center gap-3 text-sm text-muted"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.35 }}
           >
             <span className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-white/[0.03] px-3 py-1.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/partners/midnight-logo-white.svg" alt="Midnight" className="h-3.5 w-auto opacity-90" />
+              <a href={PARTNER_LINKS.midnight} target="_blank" rel="noopener noreferrer" aria-label="Midnight" className="transition hover:opacity-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/partners/midnight-logo-white.svg" alt="Midnight" className="h-3.5 w-auto opacity-90 hover:opacity-100" />
+              </a>
               <span className="text-faint">+</span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/partners/realfi-logo-white.svg" alt="RealFi" className="h-3.5 w-auto opacity-90" />
+              <a href={PARTNER_LINKS.realfi} target="_blank" rel="noopener noreferrer" aria-label="RealFi">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/partners/realfi-logo-white.svg" alt="RealFi" className="h-3.5 w-auto opacity-90 hover:opacity-100" />
+              </a>
             </span>
-            <span>{content.heroAnnouncement}</span>
-          </motion.a>
+            <a href="#partners" className="transition hover:text-text">
+              {content.heroAnnouncement}
+            </a>
+          </motion.div>
         </div>
         <CoinStage status={pool?.status} stake={pool?.liveStakeLovelace} delegators={pool?.liveDelegators} votingPower={metrics?.drep?.amountLovelace} />
       </div>

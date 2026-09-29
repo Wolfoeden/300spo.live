@@ -17,7 +17,7 @@ const BENEFITS = [
 ];
 
 const STEPS = [
-  ["Use a Cardano wallet", "Open 300 Wallet or a compatible wallet such as VESPR, Lace or Eternl."],
+  ["Use a Cardano wallet", "VESPR, Lace, Eternl or any other Cardano wallet."],
   ["Choose 300 SPO", "Use the delegation button or search with the verified 300 pool ID."],
   ["Review and sign", "Your wallet shows the on-chain delegation certificate before you approve it."],
   ["Remain in control", "Your ADA stays liquid and your delegation can be changed at any time."],
@@ -74,9 +74,6 @@ export function Guide() {
               <span className="text-muted">Then choose your role.</span>
             </h2>
           </div>
-          <p className="max-w-md text-muted lg:justify-self-end">
-            Clear, Cardano-specific information for ADA holders who want to stake, participate in governance and keep control of their assets.
-          </p>
         </Reveal>
 
         <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16">
@@ -104,8 +101,7 @@ export function Guide() {
 
             <GuideSection number="03" id="delegation" title="What does delegation mean?">
               <p>
-                Delegation assigns your stake weight to a pool without transferring ownership. It is Cardano&apos;s way of allowing every ADA holder to
-                support network security without operating a server around the clock.
+                Delegation assigns your stake weight to a pool without transferring ownership.
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {BENEFITS.map(([title, text]) => (
@@ -162,10 +158,6 @@ export function Guide() {
             </GuideSection>
 
             <GuideSection number="06" id="why-300" title="Why delegate to 300?">
-              <p>
-                300 is built around proof rather than promises. Pool status, stake, delegators, block production and governance delegation are shown
-                from public Cardano data.
-              </p>
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {TRUST.map((item) => (
                   <li key={item} className="flex items-start gap-2 text-sm">
@@ -216,9 +208,6 @@ export function Guide() {
                 <code className="mt-2 block break-all font-mono text-xs leading-relaxed text-text">{POOL_ID}</code>
                 <CopyButton value={POOL_ID} label="Copy pool ID" className="mt-3" />
               </div>
-              <p className="px-1 text-xs leading-relaxed text-faint">
-                Cardano explanations on this page follow official Cardano documentation. Live 300 metrics are loaded from public on-chain data.
-              </p>
             </div>
           </aside>
         </div>
