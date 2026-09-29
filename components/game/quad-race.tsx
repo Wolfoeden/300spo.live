@@ -9,7 +9,7 @@ import { Spinner } from "../icons";
 import type { ArenaGame, PlayResult, RaceTicket } from "./arena";
 import { WinBurst } from "./arena-effects";
 import { CardRaceStage, raceEvents, raceTimeline, type RaceDeal } from "./card-race-stage";
-import { BetChips, GameFrame } from "./game-frame";
+import { BetStepper, GameFrame, Kbd, stepBet, useGameKeys } from "./game-frame";
 
 export const BOARDS = 4;
 export type RaceDeals = { nonce: number; serverSeedHash: string; deals: RaceDeal[] };
@@ -43,6 +43,8 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const grid = useRef<HTMLDivElement>(null);
+  // The board the number keys pick for; it moves on after each pick.
+  const [active, setActive] = useState(0);
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -97,6 +99,31 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
     setPicks((current) => current.map((choice, index) => (index === board ? (choice === suit ? null : suit) : choice)));
   };
 
+  const pickByKey = (suit: number) => {
+    if (busy || oddsOf(active, suit) === 0) return;
+    pick(active, suit);
+    setActive((board) => (board + 1) % BOARDS);
+  };
+  const canSkip = phase === "animating" && !!outcome;
+  const skip = () => outcome && finish(outcome);
+
+  useGameKeys({
+    "1": () => pickByKey(0),
+    "2": () => pickByKey(1),
+    "3": () => pickByKey(2),
+    "4": () => pickByKey(3),
+    left: () => setActive((board) => (board + BOARDS - 1) % BOARDS),
+    right: () => setActive((board) => (board + 1) % BOARDS),
+    backspace: () => !busy && setPicks((current) => current.map((choice, index) => (index === active ? null : choice))),
+    up: () => !busy && setBet(stepBet(bets, bet, 1)),
+    down: () => !busy && setBet(stepBet(bets, bet, -1)),
+    plus: () => !busy && setBet(stepBet(bets, bet, 1)),
+    minus: () => !busy && setBet(stepBet(bets, bet, -1)),
+    enter: () => canStart && void start(),
+    space: () => canStart && void start(),
+    s: canSkip && skip,
+  });
+
   const start = async () => {
     if (!deals || !canStart) return;
     setError(null);
@@ -130,8 +157,14 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
             const round = showResult ? (outcome?.results[board] ?? null) : null;
             const choice = showResult && round ? round.choice : picks[board];
             return (
-              <div key={board} className="relative min-w-0 rounded-2xl border border-line bg-ink/50 p-1.5 sm:p-3">
-                <div className="mb-1 flex items-center justify-between gap-1 px-0.5 text-[0.65rem] sm:mb-2 sm:text-xs">
+              <div
+                key={board}
+                className={`relative min-w-0 rounded-2xl border bg-ink/50 p-1.5 transition sm:p-3 ${
+                  active === board && !busy ? "border-gold/50 pointer-fine:shadow-[0_0_0_1px_rgba(233,180,76,0.25)]" : "border-line"
+                }`}
+                onPointerDown={() => setActive(board)}
+              >
+                <div className="mb-1 flex items-center justify-between gap-1 px-0.5 text-[0.65rem] sm:mb-2 sm:text-sm">
                   <span className="font-mono uppercase tracking-[0.14em] text-faint">Race {board + 1}</span>
                   {choice !== null ? (
                     <span className="truncate font-semibold" style={{ color: SUIT_COLORS[choice] }}>
@@ -165,30 +198,34 @@ export function QuadRace({ game, bets, balance, enabled, loadRaces, playRaces, d
           })}
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <fieldset>
-            <legend className="mb-2 text-xs text-faint">Bet per race (tokens)</legend>
-            <BetChips bets={bets} bet={bet} onChange={setBet} disabled={busy} affordable={(amount) => amount * Math.max(1, picked) <= balance} />
-          </fieldset>
-          <div className="flex flex-col gap-2 lg:min-w-72">
-            <p className="text-sm text-muted">
-              {picked === 0 ? (
-                "Tap a lane in any race to pick its ace."
-              ) : (
-                <>
-                  {picked} race{picked === 1 ? "" : "s"} × {formatTokenAmount(BigInt(bet))} ={" "}
-                  <span className={`font-semibold tabular-nums ${total > balance ? "text-danger" : "text-text"}`}>{formatTokenAmount(BigInt(total))}</span>
-                </>
-              )}
-            </p>
-            <button className="btn btn-gold w-full" onClick={start} disabled={!canStart}>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] sm:items-end">
+          <BetStepper
+            bets={bets}
+            bet={bet}
+            onChange={setBet}
+            disabled={busy}
+            label="Bet per race"
+            affordable={(amount) => amount * Math.max(1, picked) <= balance}
+          />
+          <div className="flex flex-col gap-2">
+            <button className="btn btn-gold w-full !py-4 text-base" onClick={start} disabled={!canStart}>
               {phase === "waiting" && <Spinner size={16} />}
-              {total > balance && picked > 0 ? "Not enough game balance" : picked > 1 ? `Start ${picked} races` : "Start race"}
+              {picked === 0
+                ? "Pick a lane in any race"
+                : total > balance
+                  ? "Not enough game balance"
+                  : `Start ${picked} race${picked === 1 ? "" : "s"} · ${formatTokenAmount(BigInt(total))}`}
+              {canStart && <Kbd>Enter</Kbd>}
             </button>
-            {phase === "animating" && (
-              <button className="self-center text-xs text-faint underline-offset-4 hover:text-text hover:underline" onClick={() => outcome && finish(outcome)}>
-                Skip to the finish
+            {canSkip ? (
+              <button className="inline-flex items-center gap-2 self-center text-xs text-faint hover:text-text" onClick={skip}>
+                Skip to the finish <Kbd>S</Kbd>
               </button>
+            ) : (
+              <p className="hidden items-center justify-center gap-1.5 text-xs text-faint pointer-fine:flex">
+                <Kbd>←</Kbd>
+                <Kbd>→</Kbd> race · <Kbd>1</Kbd>–<Kbd>4</Kbd> lane · <Kbd>⌫</Kbd> clear
+              </p>
             )}
           </div>
         </div>

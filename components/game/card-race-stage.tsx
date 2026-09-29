@@ -18,6 +18,7 @@ import {
 import { formatTokenAmount } from "@/lib/format";
 import { aceArt, cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
+import { Kbd } from "./game-frame";
 
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
 export type RaceDeal = { track: number[]; odds: number[] };
@@ -29,8 +30,9 @@ const DRAW_MS = 300;
 const SETBACK_MS = 700;
 const START_MS = 450;
 const END_MS = 700;
-/** Row height of the full-size board; the compact board scales with its width. */
-const FULL_ROW = 40;
+/** Row heights: both boards scale with their width, within these bounds. */
+const FULL_ROW = { min: 40, max: 62, per: 8.4 };
+const COMPACT_ROW = { min: 18, max: 42, per: 8.5 };
 
 /** When each race event plays (ms after the race starts) and how long the whole race takes. */
 export const raceTimeline = (events: RaceEvent[]) => {
@@ -67,17 +69,21 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
     setCursor(0);
   }
 
-  // Compact boards size their rows from their own width.
+  // The board sizes its rows from its own width, so cards and aces grow with the screen.
   const board = useRef<HTMLDivElement>(null);
-  const [measured, setMeasured] = useState(24);
+  const bounds = compact ? COMPACT_ROW : FULL_ROW;
+  const [row, setRow] = useState(compact ? 24 : 44);
   useEffect(() => {
-    if (!compact || !board.current) return;
-    const observer = new ResizeObserver(([entry]) => setMeasured(Math.min(34, Math.max(18, Math.round(entry.contentRect.width / 9)))));
+    if (!board.current) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setRow(Math.min(bounds.max, Math.max(bounds.min, Math.round(entry.contentRect.width / bounds.per)))),
+    );
     observer.observe(board.current);
     return () => observer.disconnect();
-  }, [compact]);
-  const row = compact ? measured : FULL_ROW;
+  }, [bounds]);
   const tiny = row < 26;
+  const deck = { width: Math.round(row * 1.36), height: Math.round(row * 1.9) };
+  const trailCard = { width: Math.round(row * 1.0), height: Math.round(row * 1.4) };
 
   // Warm the browser cache with all card images so turned cards never show up blank.
   useEffect(() => {
@@ -111,17 +117,17 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
       {!compact && (
         <>
           <div className="flex items-center gap-3">
-            <div className="relative h-20 w-14 shrink-0">
+            <div className="relative shrink-0" style={deck}>
               <CardBack className="absolute inset-0 translate-x-1 translate-y-1 opacity-50" />
               <CardBack className="absolute inset-0" />
             </div>
-            <div className="relative z-10 h-20 w-14 shrink-0 [perspective:600px]">
+            <div className="relative z-10 shrink-0 [perspective:600px]" style={deck}>
               <AnimatePresence mode="popLayout">
                 {lastDraw ? (
                   <motion.div
                     key={lastDraw.card}
                     className="absolute inset-0"
-                    initial={{ rotateY: 180, x: -68, opacity: 0.6 }}
+                    initial={{ rotateY: 180, x: -deck.width - 12, opacity: 0.6 }}
                     animate={{ rotateY: 0, x: 0, opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.22 }}
@@ -139,8 +145,8 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                   <motion.div
                     key={event.card}
                     layout
-                    className="relative -ml-5 h-14 w-10 shrink-0 first:ml-0"
-                    style={{ zIndex: TRAIL - index }}
+                    className="relative shrink-0"
+                    style={{ zIndex: TRAIL - index, ...trailCard, marginLeft: index === 0 ? 0 : -trailCard.width / 2 }}
                     initial={{ opacity: 0, x: -28, scale: 1.15 }}
                     animate={{ opacity: 1 - index * 0.17, x: 0, scale: 1 - index * 0.07, rotate: index * 3 }}
                     exit={{ opacity: 0, x: 18, scale: 0.6, rotate: 12 }}
@@ -152,7 +158,7 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
               </AnimatePresence>
             </div>
           </div>
-          <p className="min-h-4 text-xs text-muted" aria-live="polite">
+          <p className="min-h-5 text-sm text-muted" aria-live="polite">
             {!result
               ? ""
               : finished
@@ -169,7 +175,7 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
       <div
         ref={board}
         className="grid"
-        style={{ gridTemplateColumns: `${compact ? Math.round(row * 1.3) : 56}px repeat(4, minmax(0, 1fr))`, columnGap: compact ? 3 : 8 }}
+        style={{ gridTemplateColumns: `${Math.round(row * (compact ? 1.3 : 1.42))}px repeat(4, minmax(0, 1fr))`, columnGap: compact ? 3 : Math.round(row / 5) }}
       >
         {/* Track column: finish flag on top, the seven cards below, the gate (or the turned card) at the bottom. */}
         <div className="flex flex-col">
@@ -190,7 +196,11 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                   {compact ? (
                     <MiniCard card={track[level - 1]} row={row} dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
                   ) : (
-                    <FaceCard card={track[level - 1]} sideways dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)} />
+                    <FaceCard
+                      card={track[level - 1]}
+                      size={{ width: Math.round(row * 1.24), height: Math.round(row * 0.84) }}
+                      dim={level <= reached && !(lastEvent?.kind === "setback" && lastEvent.row === level)}
+                    />
                   )}
                 </motion.div>
               ) : (
@@ -266,20 +276,24 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
                     type="button"
                     onClick={onStart}
                     aria-label={`Start the race: bet ${formatTokenAmount(BigInt(bet))} on ${SUITS[suit]}`}
-                    className="absolute inset-x-0 top-[34%] z-20 mx-auto flex w-fit flex-col items-center"
+                    className="absolute inset-x-0 top-[34%] z-20 mx-auto flex w-fit flex-col items-center gap-1"
                     initial={{ opacity: 0, scale: 0.5 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.5 }}
                     transition={{ type: "spring", stiffness: 520, damping: 26 }}
                   >
-                    <span className="relative grid size-11 place-items-center rounded-full bg-[linear-gradient(135deg,#f4d675,#9b6710)] text-[#1a1204] shadow-[0_8px_24px_-6px_rgba(233,180,76,0.9)]">
+                    <span
+                      className="relative grid place-items-center rounded-full bg-[linear-gradient(135deg,#f4d675,#9b6710)] text-[#1a1204] shadow-[0_8px_24px_-6px_rgba(233,180,76,0.9)]"
+                      style={{ width: Math.max(44, row), height: Math.max(44, row) }}
+                    >
                       <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-gold/40 [animation-duration:1.6s]" />
                       <svg viewBox="0 0 24 24" className="relative ml-0.5 size-5" fill="currentColor" aria-hidden="true">
                         <path d="M7 4.5v15l13-7.5z" />
                       </svg>
                     </span>
-                    <span className="mt-1 rounded-full bg-black/80 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold tabular-nums text-gold-bright">
+                    <span className="flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-gold-bright">
                       {formatTokenAmount(BigInt(bet))}
+                      <Kbd>Enter</Kbd>
                     </span>
                   </motion.button>
                 )}
@@ -292,13 +306,18 @@ export function CardRaceStage({ deal, result, instant, picked, onPick, disabled,
         {[0, 1, 2, 3].map((suit) => (
           <p
             key={suit}
-            className={`whitespace-nowrap text-center font-mono tabular-nums ${compact ? "mt-1" : "mt-2 text-[0.62rem] sm:text-xs"}`}
+            className={`flex items-center justify-center gap-1.5 whitespace-nowrap text-center font-mono tabular-nums ${compact ? "mt-1" : "mt-2 text-xs sm:text-sm"}`}
             style={{
               color: odds?.[suit] === 0 ? "var(--color-faint)" : SUIT_COLORS[suit],
               fontSize: compact ? Math.max(8.5, Math.min(12, row * 0.36)) : undefined,
             }}
           >
             {!odds ? "…" : odds[suit] === 0 ? "—" : compact ? shortOdds(odds[suit]) : formatMultiplier(odds[suit])}
+            {!compact && (
+              <span className="text-faint">
+                <Kbd>{suit + 1}</Kbd>
+              </span>
+            )}
           </p>
         ))}
       </div>
@@ -320,24 +339,23 @@ export const tint = (suit: number, alpha: number) => {
 };
 
 /** A playing card: 300 DEGEN art on its suit colour, rank and suit in the corner. */
-export function FaceCard({ card, sideways, dim }: { card: number; sideways?: boolean; dim?: boolean }) {
+export function FaceCard({ card, size, dim }: { card: number; size?: { width: number; height: number }; dim?: boolean }) {
   const suit = cardSuit(card);
   const rank = cardRank(card);
   const art = cardArt(suit, rank);
   return (
     <span
-      className={`relative block overflow-hidden rounded-md border bg-panel shadow-md shadow-black/40 ${sideways ? "h-8 w-12" : "size-full"} ${dim ? "opacity-40" : ""}`}
-      style={{ borderColor: tint(suit, art.face ? 0.95 : 0.7) }}
+      className={`relative block overflow-hidden rounded-md border bg-panel shadow-md shadow-black/40 ${size ? "" : "size-full"} ${dim ? "opacity-40" : ""}`}
+      style={{ borderColor: tint(suit, art.face ? 0.95 : 0.7), ...size }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover" />
       <span
-        className={`absolute left-0.5 top-0.5 flex items-center gap-0.5 rounded bg-black/80 px-1 font-semibold leading-none ${
-          sideways ? "py-px text-[0.62rem]" : "py-0.5 text-xs"
-        }`}
+        className="absolute left-0.5 top-0.5 flex items-center gap-0.5 rounded bg-black/80 px-1 py-0.5 font-semibold leading-none"
+        style={{ fontSize: size ? Math.max(10, Math.min(14, size.height * 0.3)) : 12 }}
       >
         {rank}
-        <span className={sideways ? "text-[0.7rem]" : "text-sm"} style={{ color: SUIT_COLORS[suit] }}>
+        <span style={{ color: SUIT_COLORS[suit] }}>
           {SUIT_SYMBOLS[suit]}
         </span>
       </span>
@@ -375,11 +393,11 @@ function AceCard({ suit, glow, row }: { suit: number; glow: boolean; row: number
       className={`relative block overflow-hidden rounded-md border-2 border-gold-bright ${
         glow ? "shadow-[0_0_26px_rgba(233,180,76,0.95)]" : "shadow-lg shadow-black/60"
       }`}
-      style={{ height: row * 0.94, width: row * 0.8, outline: `1.5px solid ${SUIT_COLORS[suit]}`, outlineOffset: "1px" }}
+      style={{ height: row * 1.1, width: row * 0.82, outline: `1.5px solid ${SUIT_COLORS[suit]}`, outlineOffset: "1px" }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={art.src} alt={art.alt} className="absolute inset-0 size-full object-cover object-top" />
-      <span className="absolute left-0 top-0 flex items-center gap-px rounded-br bg-black/80 px-0.5 text-[0.55rem] font-bold leading-none">
+      <span className="absolute left-0 top-0 flex items-center gap-px rounded-br bg-black/80 px-1 py-0.5 font-bold leading-none" style={{ fontSize: Math.max(9, row * 0.2) }}>
         <span className="text-gold-bright">A</span>
         <span style={{ color: SUIT_COLORS[suit] }}>{SUIT_SYMBOLS[suit]}</span>
       </span>
