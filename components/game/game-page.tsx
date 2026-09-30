@@ -293,8 +293,8 @@ export function GamePage() {
                   <span className="mt-2 block">Every round is provably fair: the server seed is committed before you play and can be revealed.</span>
                   {state?.welcome?.enabled && (
                     <span className="mt-2 block">
-                      Wallets delegated to the 300 stake pool get {formatTokenAmount(BigInt(state.welcome.poolAmount ?? state.welcome.amount))} 300
-                      starting credit once.
+                      Wallets delegated to the 300 stake pool or the 300 DRep get{" "}
+                      {formatTokenAmount(BigInt(state.welcome.poolAmount ?? state.welcome.amount))} 300 starting credit once.
                     </span>
                   )}
                 </InfoBubble>

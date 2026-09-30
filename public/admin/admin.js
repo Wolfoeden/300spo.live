@@ -56,6 +56,36 @@ const renderGame = (data) => {
     document.querySelector("#welcomePoolAmount").value = data.welcome.poolAmount;
     document.querySelector("#welcomeMinAda").value = Number(data.welcome.minLovelace) / 1e6;
     document.querySelector("#welcomeStats").textContent = ` Granted so far: ${formatAmount(data.welcome.granted)} wallets, ${formatAmount(data.welcome.total)} 300.`;
+    const reasons = {
+      granted: "credited",
+      claimed: "already has it",
+      not_delegated: "not delegated to 300",
+      not_eligible: "below the ADA minimum",
+      disabled: "starting credit switched off",
+    };
+    const attempts = data.welcome.attempts || [];
+    document.querySelector("#welcome-attempts").replaceChildren(
+      attempts.length
+        ? element(
+            "div",
+            { className: "game-list" },
+            attempts.map((attempt) =>
+              element("div", { className: "game-row" }, [
+                element("span", {}, [
+                  element("strong", { textContent: reasons[attempt.status] || attempt.status }),
+                  element("span", {
+                    className: "muted",
+                    textContent: ` · ${[attempt.pool && "pool", attempt.drep && "DRep"].filter(Boolean).join(" + ") || "no delegation"}${
+                      attempt.lovelace === null ? "" : ` · ${(Number(attempt.lovelace) / 1e6).toFixed(2)} ADA`
+                    } · ${attempt.attempts}× · ${new Date(attempt.last_at).toLocaleString()}`,
+                  }),
+                ]),
+                element("code", { textContent: shorten(attempt.wallet), title: attempt.wallet }),
+              ]),
+            ),
+          )
+        : element("p", { className: "hint", textContent: "No claims yet." }),
+    );
   }
 
   document.querySelector("#game-totals").replaceChildren(
