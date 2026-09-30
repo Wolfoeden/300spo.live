@@ -9,8 +9,8 @@ export const DEGEN_COLLECTION_URL = "https://www.wayup.io/collection/585f70537a9
 
 /** Jacks, queens and kings: the collection's named characters. Per suit (♠ ♥ ♦ ♣). */
 const FACES: Record<number, { J: [number, string]; Q: [number, string]; K: [number, string] }> = {
-  0: { J: [3, "Ephialtes"], Q: [5, "Snek"], K: [1, "Leonidas"] },
-  1: { J: [30, "Maxi"], Q: [6, "Oracle"], K: [4, "Cock"] },
+  0: { J: [22, "SUGR"], Q: [17, "Tim Cheese"], K: [11, "Bearded"] },
+  1: { J: [30, "Maxi"], Q: [8, "Bull"], K: [4, "Cock"] },
   2: { J: [23, "Tim Cheese"], Q: [9, "SUGR"], K: [2, "Xerxes"] },
   3: { J: [18, "Bull"], Q: [10, "Bull"], K: [7, "Gator"] },
 };
@@ -26,12 +26,12 @@ const NUMBERS: Record<number, number[]> = {
   3: [13, 31, 38, 46, 49, 57, 61, 65, 70],
 };
 
-/** The aces are the racehorses: four legendary degens, one per suit. */
+/** The aces are the racehorses: the collection's painted 1/1s, one per suit. */
 const ACES: [number, string][] = [
-  [11, "Bearded"],
-  [8, "Bull"],
-  [22, "SUGR"],
-  [17, "Tim Cheese"],
+  [3, "Ephialtes"],
+  [1, "Leonidas"],
+  [6, "Oracle"],
+  [5, "Snek Warrior"],
 ];
 
 const pad = (degen: number) => String(degen).padStart(3, "0");

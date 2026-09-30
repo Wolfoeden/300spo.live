@@ -82,7 +82,13 @@ describe("card art", () => {
     ];
     expect(new Set(sources).size).toBe(DECK_SIZE + 4);
     for (const src of sources) expect(existsSync(join(process.cwd(), "public", src))).toBe(true);
-    expect(cardArt(0, "K")).toMatchObject({ alt: "DEGEN #001 Leonidas", face: true });
+    expect(cardArt(0, "K")).toMatchObject({ alt: "DEGEN #011 Bearded", face: true });
+    expect([0, 1, 2, 3].map((suit) => aceArt(suit).alt)).toEqual([
+      "DEGEN #003 Ephialtes",
+      "DEGEN #001 Leonidas",
+      "DEGEN #006 Oracle",
+      "DEGEN #005 Snek Warrior",
+    ]);
   });
 });
 

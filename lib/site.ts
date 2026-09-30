@@ -24,5 +24,6 @@ export const LINKS = {
   wallet: "/wallet/",
   play: "/play/",
   governance: "/governance/",
+  rewards: "/rewards/",
   admin: "/admin/",
 } as const;

@@ -7,9 +7,9 @@ import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
-import { TOKEN_300 } from "@/lib/site";
+import { LINKS, TOKEN_300 } from "@/lib/site";
 import { RewardsPanel } from "../drip/drip-card";
-import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
+import { ArrowRight, ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
 import { useDelegation } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
@@ -235,7 +235,17 @@ export function GamePage() {
   const game = state && tile?.game ? state.games.find((entry) => entry.id === tile.game) : undefined;
   const walletPanels = state && {
     deposit: <DepositPanel state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />,
-    rewards: <RewardsPanel />,
+    rewards: (
+      <>
+        <RewardsPanel />
+        <a
+          href={LINKS.rewards}
+          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/[0.06] px-4 py-3 text-sm font-semibold text-gold-bright transition hover:border-gold/60"
+        >
+          Rewards page: countdown and loss board <ArrowRight size={14} />
+        </a>
+      </>
+    ),
   };
   const common = state &&
     walletPanels && {
