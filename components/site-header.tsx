@@ -14,6 +14,7 @@ export const HEADER_SLOT_ID = "site-header-game";
 const NAV = [
   { href: "/#guide", label: "Start" },
   { href: LINKS.governance, label: "Governance" },
+  { href: LINKS.rewards, label: "Rewards" },
 ];
 
 /** The 300 Wallet is not released yet: shown in the nav, but not a link. */

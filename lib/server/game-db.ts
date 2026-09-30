@@ -107,6 +107,16 @@ export type Fairness = {
   revealed: { serverSeed: string; serverSeedHash: string; clientSeed: string; lastNonce: number; revealedAt: string }[];
 };
 
+/** What each player has lost (stakes minus winnings), counted up to `asOf` (the start of the UTC day). */
+export type LossBoard = {
+  asOf: string;
+  nextAt: string;
+  revealAt: string | null;
+  total: number;
+  players: number;
+  rows: { wallet: string; lost: number; rounds: number }[];
+};
+
 /** `not_eligible` covers the unpublished ADA minimum; callers must not explain it. */
 export type WelcomeClaim =
   | { status: "granted"; amount: number; total: number; balance: number }
@@ -158,6 +168,7 @@ export const gameDb = {
   logWelcomeAttempt: (wallet: string, status: string, pool: boolean, drep: boolean, lovelace: bigint | null) =>
     db()`select game.log_welcome_attempt(${wallet}, ${status}, ${pool}::boolean, ${drep}::boolean, ${lovelace === null ? null : lovelace.toString()}::bigint)`,
   fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
+  lossBoard: (limit: number) => one<LossBoard>(db()`select game.loss_board(${limit}::integer) as result`),
   rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),
   adminUpdateSettings: (

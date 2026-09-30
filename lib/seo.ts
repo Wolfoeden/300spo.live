@@ -74,6 +74,25 @@ export const PAGES = {
       ...BRAND,
     ],
   },
+  rewards: {
+    path: "/rewards/",
+    title: "300 Rewards · Countdown, Loss Board, ADA · NIGHT · REALFI",
+    description:
+      "Something is behind the curtain: a two-week countdown, a public board of every stake lost in 300 Games, and rewards in ADA, NIGHT, REALFI and 300.",
+    image: "/og/rewards.jpg",
+    imageAlt: "Something is behind the curtain – 300 Rewards countdown",
+    keywords: [
+      "Cardano rewards",
+      "ADA rewards",
+      "NIGHT token",
+      "Midnight NIGHT",
+      "REALFI token",
+      "stake pool rewards",
+      "Cardano gamification",
+      "leaderboard",
+      ...BRAND,
+    ],
+  },
 } satisfies Record<string, Page>;
 
 export const pageMetadata = ({ path, title, description, image, imageAlt, keywords }: Page): Metadata => ({
@@ -185,5 +204,22 @@ export const governanceSchema = {
       about: [{ "@type": "Thing", name: "Cardano governance (CIP-1694)" }, { "@id": ORG }],
     },
     breadcrumbs("Governance", "/governance/"),
+  ],
+};
+
+/** /rewards: the countdown, the wallet's rewards and the loss board. */
+export const rewardsSchema = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": `${SITE_URL}/rewards/#webpage`,
+      url: `${SITE_URL}/rewards/`,
+      name: PAGES.rewards.title,
+      description: PAGES.rewards.description,
+      isPartOf: { "@id": WEBSITE },
+      about: { "@id": ORG },
+    },
+    breadcrumbs("Rewards", "/rewards/"),
   ],
 };

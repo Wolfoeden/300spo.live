@@ -3,8 +3,9 @@
 import { useState, useSyncExternalStore } from "react";
 import { shortenAddress } from "@/lib/cardano/address";
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
+import { LINKS } from "@/lib/site";
 import { CopyButton } from "../copy-button";
-import { ArrowUpRight, Power, Refresh, Shield, Spinner, WalletIcon } from "../icons";
+import { ArrowRight, ArrowUpRight, Power, Refresh, Shield, Spinner, WalletIcon } from "../icons";
 import { Modal } from "../modal";
 import { useWallet } from "./wallet-provider";
 
@@ -129,7 +130,7 @@ function MobileInstructions() {
 }
 
 function AccountView() {
-  const { wallet, balance, balanceError, auth, refreshBalance, disconnect, signIn, signOut } = useWallet();
+  const { wallet, balance, balanceError, auth, refreshBalance, disconnect, signIn, signOut, closeDialog } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
   if (!wallet) return null;
   const mainnet = wallet.networkId === 1;
@@ -174,7 +175,16 @@ function AccountView() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/300-logo.jpg" alt="" className="size-10 rounded-full ring-1 ring-gold/40" />
         </div>
-        <p className="mt-2 text-sm text-muted">{balance ? `${formatAdaExact(balance.lovelace)} ADA` : "Reading balance…"}</p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted">{balance ? `${formatAdaExact(balance.lovelace)} ADA` : "Reading balance…"}</p>
+          <a
+            href={LINKS.rewards}
+            onClick={closeDialog}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold-bright transition hover:border-gold/70"
+          >
+            Rewards <ArrowRight size={13} />
+          </a>
+        </div>
         {!mainnet && <p className="mt-2 text-xs text-warning">The 300 token lives on mainnet. Testnet wallets always show 0.</p>}
         {balanceError && <p className="mt-2 text-xs text-danger">{balanceError}</p>}
       </div>
