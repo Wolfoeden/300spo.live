@@ -155,6 +155,8 @@ export const gameDb = {
   chickenCollect: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_collect(${wallet}, ${round}::bigint) as result`),
   claimWelcome: (wallet: string, lovelace: bigint, pool: boolean) =>
     one<WelcomeClaim>(db()`select game.claim_welcome(${wallet}, ${lovelace.toString()}::bigint, ${pool}::boolean) as result`),
+  logWelcomeAttempt: (wallet: string, status: string, pool: boolean, drep: boolean, lovelace: bigint | null) =>
+    db()`select game.log_welcome_attempt(${wallet}, ${status}, ${pool}::boolean, ${drep}::boolean, ${lovelace === null ? null : lovelace.toString()}::bigint)`,
   fairness: (wallet: string) => one<Fairness>(db()`select game.fairness(${wallet}) as result`),
   rotateSeed: (wallet: string, clientSeed: string | null) => one<Fairness>(db()`select game.rotate_seed(${wallet}, ${clientSeed}) as result`),
   adminOverview: () => one<Record<string, unknown>>(db()`select game.admin_overview() as result`),

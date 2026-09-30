@@ -11,6 +11,9 @@ import { ArrowUpRight, Check, Spinner } from "../icons";
 import { Modal } from "../modal";
 import { useWallet } from "./wallet-provider";
 
+/** Sent on window when a delegation transaction was submitted (detail: the stake address). */
+export const DELEGATED_EVENT = "300spo:delegated";
+
 /** "both" preselects the stake pool and the DRep; the wallet can untick either. */
 export type DelegationTarget = "pool" | "drep" | "both";
 /** Starting credit: `poolAmount` for delegating to the stake pool, `amount` for the DRep alone. */
@@ -152,6 +155,7 @@ function DelegationBody({
       stage = "submit";
       const txHash = await api.submitTx(bytesToHex(assembleSignedTx(built.body, witnesses)));
       setPhase({ name: "submitted", txHash });
+      window.dispatchEvent(new CustomEvent(DELEGATED_EVENT, { detail: stakeAddress }));
       void refreshBalance();
     } catch (error) {
       setPhase({ name: "error", message: transactionErrorMessage(error, stage) });
@@ -204,9 +208,11 @@ function DelegationBody({
       <p className="text-muted">Your ADA never leaves your wallet. You sign one transaction; the network fee is about 0.2 ADA.</p>
       {offer && (
         <StartingCredit amount={credit}>
-          {selection.pool || !selection.drep
-            ? "For delegating to the 300 stake pool — once per wallet, to play 300 Games."
-            : `For delegating to the 300 DRep — once per wallet, to play 300 Games. With the stake pool it is ${formatTokenAmount(BigInt(offer.poolAmount ?? offer.amount))}.`}
+          {(offer.poolAmount ?? offer.amount) === offer.amount
+            ? "For delegating to the 300 stake pool, the 300 DRep or both — once per wallet, to play 300 Games."
+            : selection.pool || !selection.drep
+              ? "For delegating to the 300 stake pool — once per wallet, to play 300 Games."
+              : `For delegating to the 300 DRep — once per wallet, to play 300 Games. With the stake pool it is ${formatTokenAmount(BigInt(offer.poolAmount ?? offer.amount))}.`}
         </StartingCredit>
       )}
       <div className="space-y-2">

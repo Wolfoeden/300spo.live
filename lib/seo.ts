@@ -40,7 +40,7 @@ export const PAGES = {
     path: "/play/",
     title: "300 Games · Provably Fair Cardano Mini-Games",
     description:
-      "Play provably fair mini-games on Cardano: a horse race with 300 DEGEN NFT cards and Chicken. Delegate to the 300 stake pool and start with 30,000 game credit.",
+      "Play provably fair mini-games on Cardano: a horse race with 300 DEGEN NFT cards and Chicken. Delegate to the 300 stake pool or DRep and start with 3,000 game credit.",
     image: "/og/games.jpg",
     imageAlt: "300 Games – provably fair Cardano mini-games with NFT card art",
     keywords: [
