@@ -1,8 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { formatTokenAmount } from "@/lib/format";
+import { isMuted, setMuted, subscribeMuted } from "@/lib/sound";
 import { SoonBadge } from "../coming-soon";
 import { Close } from "../icons";
 import { RollingBalance } from "./arena-effects";
@@ -252,11 +253,12 @@ export function GamePanel({
               {lastWin ? `+${formatTokenAmount(BigInt(lastWin))}` : "—"}
             </span>
           </p>
+          <SoundToggle />
           <button
             type="button"
             onClick={() => setSheet("deposit")}
             aria-label="Wallet"
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 font-semibold text-muted transition hover:border-gold/40 hover:text-text lg:hidden"
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 font-semibold text-muted transition hover:border-gold/40 hover:text-text lg:hidden"
           >
             <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="3" y="6" width="18" height="13" rx="2" />
@@ -468,6 +470,26 @@ export function AutoToggle({ auto, onAuto, disabled }: { auto: AutoMode; onAuto(
       <span className={`h-5 w-9 rounded-full p-0.5 transition ${on ? "bg-gold" : "bg-white/15"}`}>
         <span className={`block size-4 rounded-full bg-ink transition ${on ? "translate-x-4" : ""}`} />
       </span>
+    </button>
+  );
+}
+
+/** Sound on or off for all games; remembered in this browser. */
+function SoundToggle() {
+  const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
+  return (
+    <button
+      type="button"
+      onClick={() => setMuted(!muted)}
+      aria-pressed={!muted}
+      aria-label={muted ? "Sound off, turn it on" : "Sound on, turn it off"}
+      title={muted ? "Sound off" : "Sound on"}
+      className="ml-auto grid size-7 shrink-0 place-items-center rounded-full border border-line text-muted transition hover:border-gold/40 hover:text-text lg:ml-0 lg:size-8 lg:self-start"
+    >
+      <svg viewBox="0 0 24 24" className="size-3.5 lg:size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" stroke="none" />
+        {muted ? <path d="M17 9l5 6M22 9l-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
+      </svg>
     </button>
   );
 }

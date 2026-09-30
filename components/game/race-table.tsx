@@ -6,6 +6,7 @@ import { formatTokenAmount } from "@/lib/format";
 import { SUIT_COLORS, SUIT_SYMBOLS, SUITS } from "@/lib/game/card-race";
 import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
+import { play } from "@/lib/sound";
 import { STRATEGIES, layoutStakes, type ChipPlacement, type RaceStrategy } from "@/lib/game/race-strategy";
 import type { ArenaGame, RaceTicket } from "./arena";
 import { WinBurst } from "./arena-effects";
@@ -165,6 +166,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     if (busy) return;
     reopen();
     setNote(null);
+    play("chip");
     setPlacements((current) => [...current, placement]);
   };
   const placeOnLane = (board: number, suit: number) => {
@@ -180,11 +182,13 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const undo = () => {
     if (busy || !placements.length) return;
     reopen();
+    play("click");
     setPlacements((current) => current.slice(0, -1));
   };
   const clear = () => {
     if (busy || !placements.length) return;
     reopen();
+    play("click");
     setPlacements([]);
   };
 
@@ -205,6 +209,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
       const result = await playStakes(stakes.flat(), { nonce: deals.nonce, serverSeedHash: deals.serverSeedHash });
       setOutcome(result);
       setPhase("animating");
+      play("start");
       const box = grid.current?.getBoundingClientRect();
       if (!fromAuto && box && (box.top < 0 || box.top > window.innerHeight * 0.5)) grid.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     } catch (cause) {
@@ -565,7 +570,15 @@ function WinTally({ wins, onDone }: { wins: number[]; onDone(): void }) {
     close.current = onDone;
   });
   useEffect(() => {
-    const controls = animate(0, total, { duration: 0.6 + wins.length * 0.35, ease: [0.22, 1, 0.36, 1], onUpdate: (value) => setShown(Math.round(value)) });
+    play("bigWin");
+    const controls = animate(0, total, {
+      duration: 0.6 + wins.length * 0.35,
+      ease: [0.22, 1, 0.36, 1],
+      onUpdate: (value) => {
+        setShown(Math.round(value));
+        play("tick");
+      },
+    });
     const timer = window.setTimeout(() => close.current(), 1600 + wins.length * 450);
     return () => {
       controls.stop();

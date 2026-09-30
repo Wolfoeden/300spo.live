@@ -4,6 +4,7 @@ import { AnimatePresence, animate, motion, useReducedMotion } from "motion/react
 import { useEffect, useRef, useState } from "react";
 import { formatTokenAmount } from "@/lib/format";
 import { cosmetic } from "@/lib/game/catalog";
+import { play } from "@/lib/sound";
 
 const BURST_MS = 3200;
 const COINS = 18;
@@ -29,6 +30,8 @@ export function WinBurst({
     const timer = window.setTimeout(onDone, BURST_MS);
     return () => window.clearTimeout(timer);
   }, [onDone]);
+
+  useEffect(() => play("win"), []);
 
   return (
     <motion.div

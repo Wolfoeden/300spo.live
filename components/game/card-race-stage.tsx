@@ -18,6 +18,7 @@ import {
 import { formatTokenAmount } from "@/lib/format";
 import { aceArt, cardArt } from "@/lib/game/card-art";
 import { formatMultiplier } from "@/lib/game/catalog";
+import { play } from "@/lib/sound";
 import { Kbd } from "./game-frame";
 
 export type RacePreview = { nonce: number; serverSeedHash: string; track: number[]; odds: number[] };
@@ -162,6 +163,12 @@ export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled,
   const reached = played.filter((event) => event.kind === "setback").length;
   const lastEvent = played[played.length - 1];
   const finished = !!result && shown === events.length;
+
+  // Each card that turns is heard; a step back thuds.
+  useEffect(() => {
+    if (!result || shown === 0 || (instant && !replaying)) return;
+    play(events[shown - 1]?.kind === "setback" ? "back" : "flip");
+  }, [result, events, shown, instant, replaying]);
 
   const onDoneRef = useRef(onDone);
   useEffect(() => {
