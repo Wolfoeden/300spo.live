@@ -10,6 +10,7 @@ import { Spinner } from "../icons";
 import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
 import { FinishProps, Skyline, StartProps, VEHICLE_SECONDS, Vehicle, laneVehicle } from "./chicken-scenery";
+import { play } from "@/lib/sound";
 import { CockFigure } from "./cock-figure";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
@@ -122,6 +123,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
     try {
       let active = open ? round : null;
       if (!active) {
+        play("cluck");
         active = await start(bet, hazards);
         setRound(active);
         settle(active);
@@ -129,6 +131,7 @@ export function ChickenGame({ game, bets, balance, enabled, load, start, step, c
         onSettled();
       }
       const next = await step(active.id);
+      play(next.status === "lost" ? "crash" : "hop");
       setRound(next);
       settle(next);
       if (next.status !== "open") setAuto("off");

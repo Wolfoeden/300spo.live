@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_COPY, cosmetic, type GameId } from "@/lib/game/catalog";
 import { formatTokenAmount } from "@/lib/format";
+import { play as playSound } from "@/lib/sound";
 import { WinBurst } from "./arena-effects";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
@@ -61,6 +62,7 @@ export function Arena({ game, bets, balance, enabled, play, onSettled, onBack, w
       if (timer.current) window.clearTimeout(timer.current);
       timer.current = null;
       setPhase("done");
+      playSound("land");
       if (outcome.win) {
         setBurst({ roundId: outcome.roundId, amount: outcome.payout });
         setLastWin(outcome.payout);
@@ -97,6 +99,7 @@ export function Arena({ game, bets, balance, enabled, play, onSettled, onBack, w
       const outcome = await play(game.id, bet, pickIndex);
       setResult(outcome);
       setPhase("animating");
+      playSound("spin");
       const duration = ANIMATION_MS[outcome.game as GameId] ?? 2000;
       timer.current = window.setTimeout(() => finish(outcome), fast ? Math.min(1200, duration) : duration);
     } catch (cause) {
