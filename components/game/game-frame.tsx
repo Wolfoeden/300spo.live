@@ -129,26 +129,6 @@ function Toast({ toast }: { toast: GameToast | null }) {
   );
 }
 
-/** Segmented switch between one race and four races at once. */
-export function ModeSwitch({ quad, onChange, disabled }: { quad: boolean; onChange(quad: boolean): void; disabled?: boolean }) {
-  return (
-    <div role="radiogroup" aria-label="Races at once" className="flex rounded-full border border-line bg-ink/60 p-0.5 text-xs font-semibold">
-      {[false, true].map((value) => (
-        <button
-          key={String(value)}
-          type="button"
-          role="radio"
-          aria-checked={quad === value}
-          disabled={disabled}
-          onClick={() => onChange(value)}
-          className={`rounded-full px-3 py-1 transition disabled:opacity-50 ${quad === value ? "bg-gold/20 text-gold-bright" : "text-muted hover:text-text"}`}
-        >
-          {value ? "4×" : "1×"}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** A keyboard hint, shown only where there is a mouse (and so, most likely, a keyboard). */
 export function Kbd({ children }: { children: React.ReactNode }) {

@@ -1,7 +1,7 @@
 "use client";
 
-import { AnimatePresence, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, animate, motion, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTokenAmount } from "@/lib/format";
 import { SUIT_COLORS, SUIT_SYMBOLS, SUITS } from "@/lib/game/card-race";
 import { DEGEN_COLLECTION_URL } from "@/lib/game/card-art";
@@ -9,8 +9,8 @@ import { formatMultiplier } from "@/lib/game/catalog";
 import { STRATEGIES, layoutStakes, type ChipPlacement, type RaceStrategy } from "@/lib/game/race-strategy";
 import type { ArenaGame, RaceTicket } from "./arena";
 import { WinBurst } from "./arena-effects";
-import { CardRaceStage, raceEvents, raceTimeline, type RaceDeal } from "./card-race-stage";
-import { GameFrame, Kbd, ModeSwitch, stepBet, useGameKeys, type GameToast } from "./game-frame";
+import { CardRaceStage, type RaceDeal, type RacePace } from "./card-race-stage";
+import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { StrategyPicker } from "./race-strategy";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
 
@@ -40,6 +40,15 @@ type Props = {
 };
 
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0);
+const PACE_KEY = "300spo:race-pace";
+const readPace = (): RacePace => {
+  try {
+    const saved = localStorage.getItem(PACE_KEY);
+    return saved === "step" || saved === "fast" ? saved : "auto";
+  } catch {
+    return "auto";
+  }
+};
 /** Where each race of the 4× grid shows its chips' odds: its outer corner. */
 const CORNER = ["left-0.5 top-0.5", "right-0.5 top-0.5", "bottom-0.5 left-0.5", "bottom-0.5 right-0.5"];
 
@@ -68,12 +77,25 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const [bursts, setBursts] = useState<number[]>([]);
   // The race the number keys place chips on.
   const [active, setActive] = useState(0);
-  const timer = useRef<number | null>(null);
+  // How races play out: the player's choice, and what the running round uses (auto play never waits for taps).
+  const [pace, setPace] = useState<RacePace>(readPace);
+  const [roundPace, setRoundPace] = useState<RacePace>("auto");
+  const [advance, setAdvance] = useState(0);
+  // After four races: their wins counted up to one sum.
+  const [tally, setTally] = useState<{ id: string; wins: number[] } | null>(null);
+  // Races that have reached their finish this round, and the wins already celebrated.
+  const finishedBoards = useRef(new Set<number>());
+  const celebrated = useRef(new Set<number>());
   const grid = useRef<HTMLDivElement>(null);
 
-  useEffect(() => () => {
-    if (timer.current) window.clearTimeout(timer.current);
-  }, []);
+  const changePace = (next: RacePace) => {
+    setPace(next);
+    try {
+      localStorage.setItem(PACE_KEY, next);
+    } catch {
+      // Only the next visit forgets it.
+    }
+  };
 
   useEffect(() => {
     let live = true;
@@ -86,19 +108,31 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     };
   }, [loadRaces, count, dealKey, dealVersion]);
 
+  // A race's win is celebrated the moment its ace crosses the line (not in fast pace).
+  const celebrate = useCallback(
+    (race: StakedRace, pace: RacePace) => {
+      const id = race.rounds[0].roundId;
+      if (pace === "fast" || reduce || celebrated.current.has(id) || !race.rounds.some((round) => round.win)) return;
+      celebrated.current.add(id);
+      setBursts((current) => [...current, id]);
+    },
+    [reduce],
+  );
+
   const finish = useCallback(
-    (result: StakedRaces) => {
-      if (timer.current) window.clearTimeout(timer.current);
-      timer.current = null;
+    (result: StakedRaces, pace: RacePace) => {
       setPhase("done");
       const races = result.results.filter((race): race is StakedRace => !!race);
-      setBursts(races.filter((race) => race.rounds.some((round) => round.win)).map((race) => race.rounds[0].roundId));
-      const payout = sum(races.flatMap((race) => race.rounds.map((round) => round.payout)));
+      // After a skip, the wins not celebrated yet are now.
+      races.forEach((race) => celebrate(race, pace));
+      const wins = races.map((race) => sum(race.rounds.map((round) => round.payout))).filter((won) => won > 0);
+      const payout = sum(wins);
       if (payout > 0) setLastWin(payout);
+      if (quad && wins.length > 0 && pace !== "fast" && !reduce) setTally({ id: races.map((race) => race.rounds[0].roundId).join("-"), wins });
       setDealKey((key) => key + 1);
       onSettled();
     },
-    [onSettled],
+    [onSettled, celebrate, quad, reduce],
   );
 
   const busy = phase === "waiting" || phase === "animating";
@@ -112,6 +146,11 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const shownBalance = busy ? balance - total : available;
   const played = outcome?.results.filter((race): race is StakedRace => !!race) ?? [];
   const winnings = sum(played.flatMap((race) => race.rounds.map((round) => round.payout)));
+  // One stable result per race: a new object on every render would restart the races still running.
+  const raceResults = useMemo(
+    () => (outcome?.results ?? []).map((race) => (race ? { roundId: race.rounds[0].roundId, outcome: race.outcome, race: race.race } : null)),
+    [outcome],
+  );
   const rules = placements.flatMap((placement) => (placement.kind === "rule" ? [placement.strategy] : []));
 
   // A finished race stays on screen until the player changes the chips or starts again.
@@ -120,6 +159,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     setPhase("idle");
     setOutcome(null);
     setBursts([]);
+    setTally(null);
   };
   const place = (placement: ChipPlacement) => {
     if (busy) return;
@@ -148,22 +188,25 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     setPlacements([]);
   };
 
-  const start = async (fast = false) => {
+  const start = async (fromAuto = false) => {
     if (!deals || !canStart) return;
     setPlayedNonce(deals.nonce);
     setError(null);
     setNote(null);
     setOutcome(null);
     setBursts([]);
+    setTally(null);
+    finishedBoards.current = new Set();
+    celebrated.current = new Set();
+    // Auto play never waits for taps.
+    setRoundPace(fromAuto && pace === "step" ? "auto" : pace);
     setPhase("waiting");
     try {
       const result = await playStakes(stakes.flat(), { nonce: deals.nonce, serverSeedHash: deals.serverSeedHash });
       setOutcome(result);
       setPhase("animating");
       const box = grid.current?.getBoundingClientRect();
-      if (!fast && box && (box.top < 0 || box.top > window.innerHeight * 0.5)) grid.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-      const longest = Math.max(...result.results.map((race) => (race ? raceTimeline(raceEvents(race.race)).total : 0)));
-      timer.current = window.setTimeout(() => finish(result), reduce ? 200 : fast ? Math.min(1800, longest) : longest);
+      if (!fromAuto && box && (box.top < 0 || box.top > window.innerHeight * 0.5)) grid.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     } catch (cause) {
       setPhase("idle");
       setAuto("off");
@@ -190,8 +233,20 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     void start(true);
   });
 
+  // Each race reports its finish; when all have, the round is over.
+  const boardDone = (index: number) => {
+    if (phase !== "animating" || !outcome || finishedBoards.current.has(index)) return;
+    finishedBoards.current.add(index);
+    const race = outcome.results[index];
+    if (race) celebrate(race, roundPace);
+    const raced = outcome.results.filter(Boolean).length;
+    if (finishedBoards.current.size >= raced) finish(outcome, roundPace);
+  };
+
   const canSkip = phase === "animating" && !!outcome;
-  const skip = () => outcome && finish(outcome);
+  const skip = () => outcome && finish(outcome, roundPace);
+  const stepping = phase === "animating" && roundPace === "step";
+  const turnCard = () => stepping && setAdvance((count) => count + 1);
   const canReplay = phase === "done" && !!outcome && auto === "off" && !reduce;
   const changeChip = (direction: 1 | -1) => !busy && setChip(stepBet(bets, chip, direction));
 
@@ -208,8 +263,8 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     down: () => changeChip(-1),
     plus: () => changeChip(1),
     minus: () => changeChip(-1),
-    enter: () => canStart && void start(),
-    space: () => canStart && void start(),
+    enter: () => (stepping ? turnCard() : canStart && void start()),
+    space: () => (stepping ? turnCard() : canStart && void start()),
     s: canSkip && skip,
     a: () => (auto !== "off" ? changeAuto("off") : canAuto && changeAuto("lock")),
     ...Object.fromEntries(STRATEGIES.map((entry) => [entry.key, () => placeRule(entry.id)])),
@@ -218,6 +273,8 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const prompt =
     auto !== "off" ? (
       "Auto play is on"
+    ) : stepping ? (
+      "Tap the board or the button to turn the next card"
     ) : busy ? (
       "Racing…"
     ) : total === 0 ? (
@@ -255,10 +312,18 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
       options={<StrategyPicker active={rules} onPlace={placeRule} disabled={busy} />}
       bet={{ bets, bet: chip, onChange: setChip, disabled: busy, affordable: (amount) => amount <= available }}
       play={{
-        label: total === 0 ? "Place chips" : total > available ? "Not enough balance" : quad ? `Start ${racesStaked} race${racesStaked === 1 ? "" : "s"}` : "Start race",
+        label: stepping
+          ? "Next card"
+          : total === 0
+            ? "Place chips"
+            : total > available
+              ? "Not enough balance"
+              : quad
+                ? `Start ${racesStaked} race${racesStaked === 1 ? "" : "s"}`
+                : "Start race",
         amount: total,
-        onPlay: () => void start(),
-        playable: canStart || (canAuto && !busy),
+        onPlay: () => (stepping ? turnCard() : void start()),
+        playable: stepping || canStart || (canAuto && !busy),
         auto,
         onAuto: changeAuto,
         kbd: canStart ? <Kbd>Enter</Kbd> : null,
@@ -279,8 +344,8 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
         ) : undefined
       }
       below={
-        <div className="flex items-center gap-2">
-          <ModeSwitch quad={quad} onChange={(value) => onCount(value ? 4 : 1)} disabled={busy} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <RaceModes quad={quad} onQuad={(value) => onCount(value ? 4 : 1)} pace={pace} onPace={changePace} disabled={busy} />
           <ChipStepper chip={chip} bets={bets} onStep={changeChip} disabled={busy} affordable={chip <= available} />
           <div className="ml-auto flex gap-1">
             <IconButton label="Undo the last chip" onClick={undo} disabled={busy || !placements.length}>
@@ -332,12 +397,15 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
         <CardRaceStage
           compact={quad}
           deal={deals?.deals[index] ?? null}
-          result={race ? { roundId: race.rounds[0].roundId, outcome: race.outcome, race: race.race } : null}
+          result={race ? (raceResults[index] ?? null) : null}
           instant={phase === "done"}
           stakes={lanes}
           onPick={(suit) => placeOnLane(index, suit)}
           disabled={busy}
           replay={replay}
+          pace={roundPace}
+          advance={advance}
+          onDone={() => boardDone(index)}
         />
       ),
     };
@@ -346,7 +414,9 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   return (
     <GameFrame gameId="card-race" payoutBps={game.payoutBps} onBack={onBack} info={info} panel={panel} toast={toast}>
       {quad ? (
-        <div ref={grid} className="grid h-full grid-cols-2 grid-rows-2 gap-1 p-1 sm:gap-2 sm:p-0">
+        <div ref={grid} className="relative grid h-full grid-cols-2 grid-rows-2 gap-1 p-1 sm:gap-2 sm:p-0">
+          {stepping && <StepCatcher onStep={turnCard} />}
+          <AnimatePresence>{tally && <WinTally key={tally.id} wins={tally.wins} onDone={() => setTally(null)} />}</AnimatePresence>
           {Array.from({ length: count }, (_, index) => {
             const { race, lanes, stage } = board(index);
             const won = race ? sum(race.rounds.map((round) => round.payout)) : 0;
@@ -383,7 +453,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
                   </span>
                 )}
                 <AnimatePresence>
-                  {phase === "done" && race && bursts.includes(race.rounds[0].roundId) && (
+                  {race && bursts.includes(race.rounds[0].roundId) && (
                     <WinBurst
                       key={race.rounds[0].roundId}
                       compact
@@ -398,9 +468,10 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
         </div>
       ) : (
         <div ref={grid} className="relative h-full p-1 sm:p-0">
+          {stepping && <StepCatcher onStep={turnCard} />}
           {board(0).stage}
           <AnimatePresence>
-            {phase === "done" && played[0] && bursts.includes(played[0].rounds[0].roundId) && (
+            {played[0] && bursts.includes(played[0].rounds[0].roundId) && (
               <WinBurst key={played[0].rounds[0].roundId} amount={winnings} onDone={() => setBursts([])} />
             )}
           </AnimatePresence>
@@ -410,6 +481,126 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
         {phase === "done" && outcome ? played.map((race) => `${SUITS[race.outcome]} won`).join(", ") : ""}
       </p>
     </GameFrame>
+  );
+}
+
+/** One pill for how to race: one race or four, and card by card on a tap, on their own, or fast. */
+function RaceModes({
+  quad,
+  onQuad,
+  pace,
+  onPace,
+  disabled,
+}: {
+  quad: boolean;
+  onQuad(quad: boolean): void;
+  pace: RacePace;
+  onPace(pace: RacePace): void;
+  disabled: boolean;
+}) {
+  const options: { id: RacePace; label: string; icon: React.ReactNode }[] = [
+    { id: "step", label: "Step: turn every card yourself", icon: <path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9L4.5 16a1.6 1.6 0 0 1 2.4-2.1L9 16" /> },
+    { id: "auto", label: "Auto", icon: <path d="M8 5.5v13l11-6.5z" /> },
+    { id: "fast", label: "Fast: short races, no long win animations", icon: <path d="M4 6v12l8-6zM12 6v12l8-6z" /> },
+  ];
+  const segment = (on: boolean) => `grid h-7 place-items-center rounded-full transition disabled:opacity-50 ${on ? "bg-gold/20 text-gold-bright" : "text-muted hover:text-text"}`;
+  return (
+    <div className="flex items-center rounded-full border border-line bg-ink/60 p-0.5">
+      <div role="radiogroup" aria-label="Races at once" className="flex">
+        {[false, true].map((value) => (
+          <button
+            key={String(value)}
+            type="button"
+            role="radio"
+            aria-checked={quad === value}
+            disabled={disabled}
+            onClick={() => onQuad(value)}
+            className={`${segment(quad === value)} px-2 text-xs font-semibold`}
+          >
+            {value ? "4×" : "1×"}
+          </button>
+        ))}
+      </div>
+      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-line" />
+      <div role="radiogroup" aria-label="Race pace" className="flex">
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={pace === option.id}
+          aria-label={option.label}
+          title={option.label}
+          disabled={disabled}
+          onClick={() => onPace(option.id)}
+          className={`${segment(pace === option.id)} w-7`}
+        >
+          <svg viewBox="0 0 24 24" className="size-4" fill={option.id === "step" ? "none" : "currentColor"} stroke={option.id === "step" ? "currentColor" : "none"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {option.icon}
+          </svg>
+        </button>
+      ))}
+      </div>
+    </div>
+  );
+}
+
+/** In step pace, the whole board is one big button that turns the next card. */
+function StepCatcher({ onStep }: { onStep(): void }) {
+  return (
+    <button type="button" aria-label="Turn the next card" onClick={onStep} className="absolute inset-0 z-30 cursor-pointer">
+      <span className="pointer-events-none absolute inset-x-0 bottom-2 mx-auto w-fit animate-pulse rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-gold-bright">
+        Tap to turn the next card
+      </span>
+    </button>
+  );
+}
+
+/** After four races: each race's win drops in and the sum counts up. A tap skips it. */
+function WinTally({ wins, onDone }: { wins: number[]; onDone(): void }) {
+  const total = sum(wins);
+  const [shown, setShown] = useState(0);
+  const close = useRef(onDone);
+  useEffect(() => {
+    close.current = onDone;
+  });
+  useEffect(() => {
+    const controls = animate(0, total, { duration: 0.6 + wins.length * 0.35, ease: [0.22, 1, 0.36, 1], onUpdate: (value) => setShown(Math.round(value)) });
+    const timer = window.setTimeout(() => close.current(), 1600 + wins.length * 450);
+    return () => {
+      controls.stop();
+      window.clearTimeout(timer);
+    };
+  }, [total, wins.length]);
+  return (
+    <motion.button
+      type="button"
+      aria-label={`Total win ${formatTokenAmount(BigInt(total))}. Tap to close.`}
+      onClick={onDone}
+      className="absolute inset-0 z-40 grid place-items-center bg-black/55"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <span className="flex flex-col items-center gap-2 rounded-3xl border border-gold/40 bg-ink/90 px-7 py-5 shadow-2xl shadow-black/70">
+        <span className="flex flex-wrap justify-center gap-1.5">
+          {wins.map((won, index) => (
+            <motion.span
+              key={index}
+              className="rounded-full border border-positive/40 bg-positive/10 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-positive"
+              initial={{ opacity: 0, y: -10, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.15 + index * 0.35 }}
+            >
+              +{formatTokenAmount(BigInt(won))}
+            </motion.span>
+          ))}
+        </span>
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-gold-bright">Total win</span>
+        <span className="text-gold-gradient text-4xl font-bold tabular-nums">+{formatTokenAmount(BigInt(shown))}</span>
+        <span className="text-[0.65rem] text-faint">Tap to close</span>
+      </span>
+    </motion.button>
   );
 }
 
@@ -427,14 +618,14 @@ function ChipStepper({
   disabled: boolean;
   affordable: boolean;
 }) {
-  const button = "grid size-8 place-items-center rounded-lg border border-line bg-white/[0.03] text-lg leading-none transition enabled:active:scale-95 disabled:opacity-30";
+  const button = "grid size-7 place-items-center rounded-lg border border-line bg-white/[0.03] text-lg leading-none transition enabled:active:scale-95 disabled:opacity-30";
   return (
     <div className="flex items-center gap-1" role="group" aria-label="Chip">
       <button type="button" aria-label="Smaller chip" className={button} onClick={() => onStep(-1)} disabled={disabled || chip <= bets.min}>
         −
       </button>
       <span
-        className={`grid h-8 min-w-12 place-items-center rounded-full border-2 border-dashed border-[#1a1204]/40 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] px-2 text-xs font-bold tabular-nums text-[#1a1204] shadow-md ${
+        className={`grid h-7 min-w-11 place-items-center rounded-full border-2 border-dashed border-[#1a1204]/40 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] px-2 text-xs font-bold tabular-nums text-[#1a1204] shadow-md ${
           affordable ? "" : "opacity-50"
         }`}
         aria-live="polite"
@@ -456,7 +647,7 @@ function IconButton({ label, onClick, disabled, children }: { label: string; onC
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid size-8 place-items-center rounded-lg border border-line text-muted transition hover:border-gold/40 hover:text-text disabled:opacity-30"
+      className="grid size-7 place-items-center rounded-lg border border-line text-muted transition hover:border-gold/40 hover:text-text disabled:opacity-30"
     >
       <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {children}
