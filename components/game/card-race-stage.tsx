@@ -26,10 +26,18 @@ export type RaceResult = { roundId: number; outcome: number; race: { track: numb
 
 /** Cards that stay visible after the current one before they drop off. */
 const TRAIL = 5;
-const DRAW_MS = 300;
-const SETBACK_MS = 700;
-const START_MS = 450;
-const END_MS = 700;
+
+/**
+ * How a race is played out: card by card on the player's tap ("step"), on its
+ * own ("auto"), or quickly ("fast": short timings, no long win animations).
+ */
+export type RacePace = "step" | "auto" | "fast";
+
+/** Milliseconds from the start to the first card, per card, per step back, and from the finish to the end. */
+const TIMING = {
+  auto: { start: 450, draw: 300, setback: 700, end: 700 },
+  fast: { start: 120, draw: 90, setback: 220, end: 160 },
+} as const;
 /**
  * Row heights: a board fits both its width (per = rows across) and its height
  * (rows = row heights stacked, fixed = pixels of text around them), within min and max.
@@ -45,10 +53,11 @@ const COMPACT_ROW = { min: 12, max: 42, per: 6.1, rows: 9.2, fixed: 18 };
 const ACE = { width: 1.1, height: 1.5 };
 
 /** When each race event plays (ms after the race starts) and how long the whole race takes. */
-export const raceTimeline = (events: RaceEvent[]) => {
-  let time = START_MS;
-  const at = events.map((event) => (time += event.kind === "draw" ? DRAW_MS : SETBACK_MS));
-  return { at, total: time + END_MS };
+export const raceTimeline = (events: RaceEvent[], pace: "auto" | "fast" = "auto") => {
+  const timing = TIMING[pace];
+  let time = timing.start;
+  const at = events.map((event) => (time += event.kind === "draw" ? timing.draw : timing.setback));
+  return { at, total: time + timing.end };
 };
 
 export const raceEvents = (race: RaceResult["race"]) => runRace([...race.track, ...race.draws]).events;
@@ -67,9 +76,14 @@ type Props = {
   compact?: boolean;
   /** Changing this number plays the finished race again (the replay button in the terminal). */
   replay?: number;
+  /** How the race plays out; in "step" each change of `advance` turns the next card. */
+  pace?: RacePace;
+  advance?: number;
+  /** Called once the race has played out to its finish (not after a skip or a replay). */
+  onDone?(): void;
 };
 
-export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled, compact = false, replay = 0 }: Props) {
+export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled, compact = false, replay = 0, pace = "auto", advance = 0, onDone }: Props) {
   const reduce = useReducedMotion();
   const events = useMemo(() => (result ? raceEvents(result.race) : []), [result]);
   const [cursor, setCursor] = useState(0);
@@ -78,10 +92,17 @@ export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled,
   const [replaying, setReplaying] = useState(false);
   const [replayRun, setReplayRun] = useState(0);
   const [seenReplay, setSeenReplay] = useState(replay);
+  const [seenAdvance, setSeenAdvance] = useState(advance);
   if ((result?.roundId ?? null) !== round) {
     setRound(result?.roundId ?? null);
     setCursor(0);
     setReplaying(false);
+    setSeenAdvance(advance);
+  }
+  // Step by step: every tap turns one card.
+  if (advance !== seenAdvance) {
+    setSeenAdvance(advance);
+    if (result && pace === "step" && !instant && !replaying) setCursor((current) => Math.min(events.length, current + 1));
   }
   const startReplay = () => {
     setReplaying(true);
@@ -120,12 +141,13 @@ export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled,
   }, []);
 
   useEffect(() => {
-    if (!result || reduce || (instant && !replaying)) return;
-    const { at, total } = raceTimeline(events);
+    if (!result || reduce || (instant && !replaying) || (pace === "step" && !replaying)) return;
+    // A replay always runs on its own.
+    const { at, total } = raceTimeline(events, pace === "fast" && !replaying ? "fast" : "auto");
     const timers = at.map((time, index) => window.setTimeout(() => setCursor(index + 1), time));
     if (replaying) timers.push(window.setTimeout(() => setReplaying(false), total));
     return () => timers.forEach((id) => window.clearTimeout(id));
-  }, [result, events, instant, reduce, replaying, replayRun]);
+  }, [result, events, instant, reduce, replaying, replayRun, pace]);
 
   const shown = result && (instant || reduce) && !replaying ? events.length : cursor;
   const track = result?.race.track ?? deal?.track ?? null;
@@ -140,6 +162,23 @@ export function CardRaceStage({ deal, result, instant, stakes, onPick, disabled,
   const reached = played.filter((event) => event.kind === "setback").length;
   const lastEvent = played[played.length - 1];
   const finished = !!result && shown === events.length;
+
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+  const reported = useRef<number | null>(null);
+  useEffect(() => {
+    if (!result || !finished || instant || replaying || reported.current === result.roundId) return;
+    const id = window.setTimeout(
+      () => {
+        reported.current = result.roundId;
+        onDoneRef.current?.();
+      },
+      reduce ? 0 : TIMING[pace === "fast" ? "fast" : "auto"].end,
+    );
+    return () => window.clearTimeout(id);
+  }, [result, finished, instant, replaying, reduce, pace]);
 
   return (
     <div
