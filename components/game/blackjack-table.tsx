@@ -11,11 +11,14 @@ import { play } from "@/lib/sound";
 import type { ArenaGame } from "./arena";
 import { WinBurst } from "./arena-effects";
 import { CardBack } from "./card-race-stage";
+import { GatorFigure, type GatorMood } from "./gator-figure";
 import { GameFrame, Kbd, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, type WalletPanels } from "./terminal";
 
 type Move = "hit" | "stand" | "double" | "split";
 type Reveal = { id: number; step: number; slow: boolean; balance: number };
+/** Right after the dealer's turn: the round whose winnings are being paid out. */
+type Payout = { id: number; landed: boolean };
 
 type Props = {
   game: ArenaGame;
@@ -113,6 +116,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const [burstSeen, setBurstSeen] = useState<number | null>(null);
   // The dealer's turn played back card by card (the server settles it at once): how many dealer cards are up.
   const [reveal, setReveal] = useState<Reveal | null>(null);
+  const [payout, setPayout] = useState<Payout | null>(null);
   const [felt, size] = useElementSize<HTMLDivElement>();
   const now = useClock();
   const settledRounds = useRef(new Set<number>());
@@ -215,6 +219,8 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         setReveal({ ...reveal, step: reveal.step + 1 });
       } else {
         setReveal(null);
+        // The dealer pays: chips go out to the winners, the Gator reacts.
+        setPayout({ id: reveal.id, landed: false });
       }
     }, delay);
     return () => window.clearTimeout(id);
@@ -230,7 +236,27 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
       : null;
   const fresh = !revealing && !!outcome && !!finished?.finishedAt && serverNow !== null && serverNow - Date.parse(finished.finishedAt) < 30_000;
   const lastWin = !revealing && outcome && outcome.net > 0 ? outcome.paid : null;
-  const burst = fresh && outcome && outcome.net > 0 && burstSeen !== outcome.id && !reduce ? outcome : null;
+  // After the chips have landed, short, and gone as soon as the next countdown starts.
+  const burst =
+    fresh && outcome && outcome.net > 0 && payout?.id === outcome.id && payout.landed && burstSeen !== outcome.id && !reduce && !round?.startsAt && round?.status !== "playing"
+      ? outcome
+      : null;
+  // The payout lasts a few seconds: chips fly (about 1.4 s), the Gator grins or reels.
+  useEffect(() => {
+    if (!payout) return;
+    const id = payout.landed ? window.setTimeout(() => setPayout(null), 3000) : window.setTimeout(() => setPayout({ ...payout, landed: true }), 1400);
+    return () => window.clearTimeout(id);
+  }, [payout]);
+  const paying = !!payout && payout.id === finished?.id && round?.status !== "playing";
+  const dealerMood: GatorMood = revealing
+    ? "think"
+    : paying && finished
+      ? finished.dealerTotal > 21
+        ? "bust"
+        : finished.hands.filter((hand) => hand.result === "lose").length > finished.hands.filter((hand) => hand.result === "win" || hand.result === "blackjack").length
+          ? "win"
+          : "idle"
+      : "idle";
 
   // Once per finished round, after the dealer's turn: the page's balance and history catch up.
   const outcomeId = revealing ? null : (outcome?.id ?? null);
@@ -486,6 +512,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         <Felt />
         <Shoe />
         <Dealer
+          mood={dealerMood}
           roundId={shown?.id ?? null}
           cards={dealerCards}
           total={dealerTotal}
@@ -541,8 +568,20 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
           );
         })}
 
+        {/* The dealer pays every winning hand: chips fly from the dealer to the player. */}
+        {paying && finished && !reduce && (
+          <Winnings
+            key={finished.id}
+            width={size.width}
+            height={size.height}
+            targets={finished.hands
+              .filter((hand) => hand.payout > hand.bet)
+              .map((hand) => ({ id: hand.id, x: places[hand.seat - 1][0], y: places[hand.seat - 1][1] - 12, chips: Math.min(7, 2 + Math.floor((hand.payout - hand.bet) / 600)) }))}
+          />
+        )}
+
         <AnimatePresence>
-          {burst && <WinBurst key={burst.id} amount={burst.paid} onDone={() => setBurstSeen(burst.id)} />}
+          {burst && <WinBurst key={burst.id} amount={burst.paid} duration={1800} onDone={() => setBurstSeen(burst.id)} />}
         </AnimatePresence>
         <p className="sr-only" aria-live="polite">
           {prompt}
@@ -610,6 +649,7 @@ function Shoe() {
 
 /** The dealer: the Gator behind the table, the dealer's cards on the cloth in front of him. */
 function Dealer({
+  mood,
   roundId,
   cards,
   total,
@@ -619,6 +659,7 @@ function Dealer({
   dealtCount,
   reduce,
 }: {
+  mood: GatorMood;
   roundId: number | null;
   cards: (Card | null)[];
   total: number;
@@ -630,20 +671,11 @@ function Dealer({
 }) {
   return (
     <div data-dealer-up={cards.filter((card) => card !== null).length} className="absolute left-1/2 top-[1%] z-10 flex -translate-x-1/2 flex-col items-center">
-      <motion.div
-        className="relative w-[clamp(5rem,22cqw,9.5rem)]"
-        animate={reduce ? undefined : playing ? { y: [0, -4, 0], scale: [1, 1.04, 1] } : { y: [0, -2, 0] }}
-        transition={playing ? { duration: 0.9, repeat: Infinity } : { duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
-      >
-        {playing && <span className="absolute inset-[8%] rounded-full bg-gold/35 blur-2xl" />}
-        {/* eslint-disable-next-line @next/next/no-img-element -- DEGEN #007, the Gator, from the 300 DEGEN collection */}
-        <img
-          src="/blackjack/dealer-gator.jpg"
-          alt="The dealer: the Gator, DEGEN #007"
-          className="relative aspect-square w-full object-cover [mask-image:radial-gradient(ellipse_50%_52%_at_50%_44%,black_62%,transparent_100%)]"
-        />
-      </motion.div>
-      <p className="-mt-[12%] flex items-center gap-1.5 rounded-full border border-gold/40 bg-black/75 px-2 py-0.5 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-gold-bright shadow-lg">
+      <div className="relative w-[clamp(5.5rem,24cqw,10rem)]" role="img" aria-label="The dealer: the Gator, DEGEN #007">
+        {playing && <span className="absolute inset-[10%] rounded-full bg-gold/30 blur-2xl" />}
+        <GatorFigure mood={mood} className="relative w-full drop-shadow-[0_10px_14px_rgba(0,0,0,0.55)]" />
+      </div>
+      <p className="-mt-[4%] flex items-center gap-1.5 rounded-full border border-gold/40 bg-black/75 px-2 py-0.5 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-gold-bright shadow-lg">
         Dealer
         {cards.length > 0 && <TotalPill total={total} />}
         {slow && <span className="animate-pulse rounded-full bg-gold/25 px-1.5 tracking-normal">Blackjack?</span>}
@@ -677,7 +709,8 @@ function TableClock({ label, remaining, total, urgent, audible }: { label: strin
   useEffect(() => {
     if (final !== null && audible) play("tick");
   }, [final, audible]);
-  const color = final !== null ? "#ff4d4d" : urgent ? "var(--color-gold-bright)" : "var(--color-gold)";
+  const color = urgent ? "var(--color-gold-bright)" : "var(--color-gold)";
+  const growth = final === null ? 1 : [1.7, 1.35, 1][final - 1];
   return (
     <div className="flex flex-col items-center gap-1.5">
       <div className={`relative grid size-[clamp(3.6rem,13cqw,5.4rem)] place-items-center transition-opacity duration-200 ${final !== null ? "opacity-0" : ""}`}>
@@ -714,9 +747,10 @@ function TableClock({ label, remaining, total, urgent, audible }: { label: strin
           <motion.span
             key={final}
             aria-hidden="true"
-            className="pointer-events-none absolute left-1/2 top-1/2 font-black tabular-nums text-[clamp(4rem,22cqw,9rem)] leading-none text-[#ff4d4d] [text-shadow:0_0_30px_rgba(255,60,60,0.75),0_6px_0_rgba(0,0,0,0.6)]"
-            initial={{ opacity: 0, scale: 2.4, x: "-50%", y: "-50%" }}
-            animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+            className="pointer-events-none absolute left-1/2 top-1/2 font-mono font-black tabular-nums text-[clamp(3rem,15cqw,6.5rem)] leading-none [text-shadow:0_0_30px_rgba(233,180,76,0.75),0_6px_0_rgba(0,0,0,0.6)]"
+            style={{ color }}
+            initial={{ opacity: 0, scale: growth * 0.4, x: "-50%", y: "-50%" }}
+            animate={{ opacity: 1, scale: growth, x: "-50%", y: "-50%" }}
             exit={{ opacity: 0, scale: 0.5, x: "-50%", y: "-50%" }}
             transition={{ type: "spring", stiffness: 420, damping: 22 }}
           >
@@ -724,6 +758,38 @@ function TableClock({ label, remaining, total, urgent, audible }: { label: strin
           </motion.span>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** Chips flying from the dealer to each winning hand, a few per hand, one after another. */
+function Winnings({ width, height, targets }: { width: number; height: number; targets: { id: number; x: number; y: number; chips: number }[] }) {
+  const from = { x: 50, y: 32 };
+  // One chip sound per winning hand, as its chips land (the targets of a round do not change).
+  const winners = targets.length;
+  useEffect(() => {
+    const timers = Array.from({ length: winners }, (_, index) => window.setTimeout(() => play("chip"), 450 + index * 260));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [winners]);
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-40">
+      {targets.flatMap((target, order) =>
+        Array.from({ length: target.chips }, (_, index) => (
+          <motion.span
+            key={`${target.id}-${index}`}
+            className="absolute size-[clamp(0.9rem,3.4cqw,1.5rem)] rounded-full border-2 border-dashed border-[#1a1204]/45 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] shadow-[0_3px_8px_rgba(0,0,0,0.6)]"
+            style={{ left: `${from.x}%`, top: `${from.y}%` }}
+            initial={{ x: "-50%", y: "-50%", opacity: 0, scale: 0.6 }}
+            animate={{
+              x: [`-50%`, `calc(-50% + ${((target.x - from.x) / 100) * width + (index % 3) * 4 - 4}px)`],
+              y: [`-50%`, `calc(-50% + ${((target.y - from.y) / 100) * height - index * 3}px)`],
+              opacity: [0, 1, 1, 0],
+              scale: [0.6, 1, 1, 0.9],
+            }}
+            transition={{ duration: 1.1, delay: 0.25 + order * 0.26 + index * 0.07, ease: [0.22, 1, 0.36, 1], times: [0, 0.75, 0.9, 1] }}
+          />
+        )),
+      )}
     </div>
   );
 }
