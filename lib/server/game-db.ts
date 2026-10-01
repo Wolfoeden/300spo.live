@@ -1,3 +1,4 @@
+import type { BlackjackState } from "../game/blackjack";
 import { asJson, database as db, result as one } from "./db";
 
 /** Errors raised by the game.* and drip.* functions (`raise exception '<code>'`). */
@@ -19,6 +20,11 @@ export const GAME_ERRORS = new Set([
   "invalid_request",
   "round_open",
   "round_not_open",
+  "table_not_found",
+  "seat_taken",
+  "not_seated",
+  "round_running",
+  "not_your_turn",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -29,7 +35,7 @@ export type GameState = {
   minDeposit: number;
   treasuryAddress: string | null;
   bets: { min: number; max: number; step: number };
-  games: { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean }[];
+  games: { id: string; name: string; kind: "pick" | "race" | "step" | "table"; outcomes: number; payoutBps: number; enabled: boolean }[];
   balance: number;
   welcome: { enabled: boolean; amount: number; claimed: boolean };
   deposits: { reference: string; requested: number; received: number | null; status: string; note: string | null; txHash: string | null; createdAt: string }[];
@@ -165,6 +171,15 @@ export const gameDb = {
     one<ChickenRound>(db()`select game.chicken_start(${wallet}, ${bet.toString()}::bigint, ${hazards}::integer) as result`),
   chickenStep: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_step(${wallet}, ${round}::bigint) as result`),
   chickenCollect: (wallet: string, round: number) => one<ChickenRound>(db()`select game.chicken_collect(${wallet}, ${round}::bigint) as result`),
+  // Blackjack: every call applies the table's due deadlines first (see game.bj_step).
+  bjEnter: (table: number, wallet: string) => one<BlackjackState>(db()`select game.bj_enter(${table}::integer, ${wallet}) as result`),
+  bjSit: (table: number, seat: number, wallet: string, name: string) =>
+    one<BlackjackState>(db()`select game.bj_sit(${table}::integer, ${seat}::integer, ${wallet}, ${name}) as result`),
+  bjLeave: (table: number, wallet: string) => one<BlackjackState>(db()`select game.bj_leave(${table}::integer, ${wallet}) as result`),
+  bjBet: (table: number, wallet: string, bet: bigint | null) =>
+    one<BlackjackState>(db()`select game.bj_bet(${table}::integer, ${wallet}, ${bet === null ? null : bet.toString()}::bigint) as result`),
+  bjAct: (table: number, wallet: string, action: string) => one<BlackjackState>(db()`select game.bj_act(${table}::integer, ${wallet}, ${action}) as result`),
+  bjTickAll: () => db()`select game.bj_tick_all()`,
   claimWelcome: (wallet: string, lovelace: bigint, pool: boolean) =>
     one<WelcomeClaim>(db()`select game.claim_welcome(${wallet}, ${lovelace.toString()}::bigint, ${pool}::boolean) as result`),
   logWelcomeAttempt: (wallet: string, status: string, pool: boolean, drep: boolean, lovelace: bigint | null) =>

@@ -9,7 +9,7 @@ import { WinBurst } from "./arena-effects";
 import { GameFrame, Kbd, stepBet, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, useAutoRun, useStopWhenHidden, type AutoMode, type WalletPanels } from "./terminal";
 
-export type ArenaGame = { id: string; name: string; kind: "pick" | "race"; outcomes: number; payoutBps: number; enabled: boolean };
+export type ArenaGame = { id: string; name: string; kind: "pick" | "race" | "step" | "table"; outcomes: number; payoutBps: number; enabled: boolean };
 export type PlayResult = {
   roundId: number;
   game: string;

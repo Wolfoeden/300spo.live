@@ -189,7 +189,9 @@ export function FairnessCard({
 }
 
 /** "Xerxes → 300" style label for a round's pick and result. */
-export const roundSummary = (round: { game: string; choice: number; outcome: number; payout: number; detail?: { hazards: number } | null }) =>
-  round.game === "chicken"
+export const roundSummary = (round: { game: string; choice: number; outcome: number; payout: number; detail?: { hazards?: number; result?: string } | null }) =>
+  round.game === "blackjack"
+    ? `${round.choice > 21 ? "Bust" : round.choice} vs dealer ${round.outcome > 21 ? "bust" : round.outcome}${round.detail?.result === "blackjack" ? " · blackjack" : ""}`
+    : round.game === "chicken"
     ? `${difficultyLabel(round.detail?.hazards ?? 1)} · ${round.payout > 0 ? `collected after ${round.choice} lane${round.choice === 1 ? "" : "s"}` : `hit on lane ${round.choice}`}`
     : `${choiceLabel(round.game, round.choice)} → ${choiceLabel(round.game, round.outcome)}`;
