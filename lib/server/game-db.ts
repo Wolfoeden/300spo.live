@@ -175,9 +175,10 @@ export const gameDb = {
   bjEnter: (table: number, wallet: string) => one<BlackjackState>(db()`select game.bj_enter(${table}::integer, ${wallet}) as result`),
   bjSit: (table: number, seat: number, wallet: string, name: string) =>
     one<BlackjackState>(db()`select game.bj_sit(${table}::integer, ${seat}::integer, ${wallet}, ${name}) as result`),
-  bjLeave: (table: number, wallet: string) => one<BlackjackState>(db()`select game.bj_leave(${table}::integer, ${wallet}) as result`),
-  bjBet: (table: number, wallet: string, bet: bigint | null) =>
-    one<BlackjackState>(db()`select game.bj_bet(${table}::integer, ${wallet}, ${bet === null ? null : bet.toString()}::bigint) as result`),
+  bjLeave: (table: number, wallet: string, seat: number | null) =>
+    one<BlackjackState>(db()`select game.bj_leave(${table}::integer, ${wallet}, ${seat}::integer) as result`),
+  bjBet: (table: number, wallet: string, bet: bigint | null, seat: number | null) =>
+    one<BlackjackState>(db()`select game.bj_bet(${table}::integer, ${wallet}, ${bet === null ? null : bet.toString()}::bigint, ${seat}::integer) as result`),
   bjAct: (table: number, wallet: string, action: string) => one<BlackjackState>(db()`select game.bj_act(${table}::integer, ${wallet}, ${action}) as result`),
   bjTickAll: () => db()`select game.bj_tick_all()`,
   claimWelcome: (wallet: string, lovelace: bigint, pool: boolean) =>

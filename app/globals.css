@@ -26,6 +26,7 @@
   --animate-drive: drive 3s linear infinite;
   --animate-river: river 5s linear infinite;
   --animate-twinkle: twinkle 3.2s ease-in-out infinite;
+  --animate-felt-sheen: felt-sheen 11s ease-in-out infinite;
 
   /* Chicken: a vehicle crossing a lane from top to bottom. It sits at the bottom of a box as tall as the
      lane, and the box travels from just above the lane to just below it, so every vehicle covers the same road. */
@@ -35,6 +36,16 @@
     }
     100% {
       transform: translateY(calc(100% + 130px));
+    }
+  }
+  /* Blackjack: a slow light passing over the table's cloth. */
+  @keyframes felt-sheen {
+    0%,
+    100% {
+      background-position: 115% 0;
+    }
+    50% {
+      background-position: -15% 0;
     }
   }
   /* Chicken scenery: the river's ripples and the stars. */

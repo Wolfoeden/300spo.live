@@ -128,11 +128,14 @@ const handle = async (request: Request, action: string, wallet: string) => {
       if (!Number.isInteger(seat) || seat < 1 || seat > 7) return json({ error: "invalid_request" }, 400);
       return json(await gameDb.bjSit(table, seat, wallet, await tableName(wallet)));
     }
-    if (action === "blackjack-leave") return json(await gameDb.bjLeave(table, wallet));
+    // An account may hold several seats: leave and bet take one seat, or without it all of them.
+    const seat = body.seat === undefined || body.seat === null ? null : Number(body.seat);
+    if (seat !== null && (!Number.isInteger(seat) || seat < 1 || seat > 7)) return json({ error: "invalid_request" }, 400);
+    if (action === "blackjack-leave") return json(await gameDb.bjLeave(table, wallet, seat));
     if (action === "blackjack-bet") {
       const bet = body.bet === null ? null : /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : undefined;
       if (bet === undefined) return json({ error: "invalid_request" }, 400);
-      return json(await gameDb.bjBet(table, wallet, bet));
+      return json(await gameDb.bjBet(table, wallet, bet, seat));
     }
     if (action === "blackjack-act") {
       const move = String(body.move ?? "");

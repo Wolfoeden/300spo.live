@@ -23,7 +23,8 @@ type Props = {
   enabled: boolean;
   load(table: number): Promise<BlackjackState>;
   sit(table: number, seat: number): Promise<BlackjackState>;
-  leave(table: number): Promise<BlackjackState>;
+  /** One seat, or with null every seat of the player at the table. */
+  leave(table: number, seat: number | null): Promise<BlackjackState>;
   bet(table: number, amount: number | null): Promise<BlackjackState>;
   act(table: number, move: Move): Promise<BlackjackState>;
   onSettled(): void;
@@ -39,6 +40,20 @@ const subscribeClock = (callback: () => void) => {
 const clockNow = () => Math.floor(Date.now() / 250) * 250;
 const useClock = () => useSyncExternalStore(subscribeClock, clockNow, () => null);
 
+/** The size of an element, kept up to date. */
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size] as const;
+}
+
 const RESULT_LABEL: Record<NonNullable<BlackjackHand["result"]>, string> = { win: "Win", blackjack: "Blackjack", push: "Push", lose: "Lose" };
 const RESULT_STYLE: Record<NonNullable<BlackjackHand["result"]>, string> = {
   win: "bg-positive/90 text-[#062915]",
@@ -47,11 +62,37 @@ const RESULT_STYLE: Record<NonNullable<BlackjackHand["result"]>, string> = {
   lose: "bg-black/80 text-faint",
 };
 
-/** Where the seven seats sit on the table's arc (seat 1 on the dealer's left, the player's right). */
-const ARC = Array.from({ length: SEATS }, (_, index) => {
-  const angle = ((14 + index * 25.3) * Math.PI) / 180;
-  return { left: 50 + 43 * Math.cos(angle), top: 6 + 66 * Math.sin(angle) };
-});
+/** Seconds a countdown runs: to the deal, and per decision (see game.bj_step and game.bj_advance). */
+const DEAL_SECONDS = 10;
+const TURN_SECONDS = 20;
+
+/**
+ * The seven seats around the rail, seat 1 on the left to seat 7 on the right, as
+ * [x, y] in % of the table: where a player's plate stands (their cards lie in
+ * front of it, towards the dealer).
+ */
+const PLACES = {
+  narrow: [
+    [12, 39],
+    [13, 61],
+    [29, 81],
+    [50, 97],
+    [71, 81],
+    [87, 61],
+    [88, 39],
+  ],
+  wide: [
+    [12, 47],
+    [18, 67],
+    [32, 82],
+    [50, 97],
+    [68, 82],
+    [82, 67],
+    [88, 47],
+  ],
+} as const;
+/** Where the shoe stands; every card comes from there. */
+const SHOE = [80, 7] as const;
 
 /**
  * Blackjack for up to seven players at one table. Players take a seat and bet;
@@ -72,8 +113,11 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const [burstSeen, setBurstSeen] = useState<number | null>(null);
   // The dealer's turn played back card by card (the server settles it at once): how many dealer cards are up.
   const [reveal, setReveal] = useState<Reveal | null>(null);
+  const [felt, size] = useElementSize<HTMLDivElement>();
   const now = useClock();
   const settledRounds = useRef(new Set<number>());
+  // Until when the deal's own card sounds play (the one-sound-per-update rule waits meanwhile).
+  const dealSoundsUntil = useRef(0);
   const viewRef = useRef<BlackjackState | null>(null);
   const reduceRef = useRef(reduce);
   useEffect(() => {
@@ -92,6 +136,12 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
       const slow = finished.dealer[0] !== null && finished.dealer[0] !== undefined && cardValue(finished.dealer[0]) >= 10;
       setReveal({ id: finished.id, step: 1, slow, balance: previous.you.balance });
       play("knock");
+    }
+    // The deal: one card sound per card, in the rhythm the cards fly in.
+    if (before?.status === "betting" && next.round?.id === before.id && next.round.status === "playing") {
+      const cards = next.round.hands.filter((hand) => hand.part === 0).length * 2 + 2;
+      for (let card = 0; card < cards; card += 1) window.setTimeout(() => play("flip"), 250 + card * 180);
+      dealSoundsUntil.current = Date.now() + 600 + cards * 180;
     }
     const merged = { ...next, you: you ?? previous?.you ?? { seat: null, table: null, hands: [], balance: 0 } };
     viewRef.current = merged;
@@ -134,14 +184,19 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   }, [deadline, offset, refresh]);
 
   const you = view?.you ?? null;
-  const mySeat = you && you.table === table ? you.seat : null;
+  // An account may hold several seats at the table.
+  const mySeats = you && you.table === table ? (you.seats ?? (you.seat !== null ? [you.seat] : [])) : [];
+  const mySeat = mySeats[0] ?? null;
   const myName = view?.seats.find((seat) => seat.seat === mySeat)?.name ?? null;
-  const mine = (hand: BlackjackHand) => !!you?.hands.includes(hand.id) || (hand.seat === mySeat && hand.name === myName);
+  const mine = (hand: BlackjackHand) => !!you?.hands.includes(hand.id) || (mySeats.includes(hand.seat) && hand.name === myName);
   const turnHand = round?.status === "playing" ? (round.hands.find((hand) => hand.id === round.turnHand) ?? null) : null;
   const myTurn = !!turnHand && mine(turnHand);
-  const seatBet = view?.seats.find((seat) => seat.seat === mySeat)?.bet ?? null;
+  // The bets on the player's seats: placed when every seat carries one, the same on all.
+  const myBets = (view?.seats ?? []).filter((seat) => mySeats.includes(seat.seat)).map((seat) => seat.bet);
+  const seatBet = myBets.length && myBets.every((amount) => amount !== null && amount === myBets[0]) ? myBets[0] : myBets.some((amount) => amount !== null) ? -1 : null;
+  const betTotal = chip * Math.max(1, mySeats.length);
   const betters = view?.seats.filter((seat) => seat.bet !== null).length ?? 0;
-  const secondsLeft = deadline && serverNow !== null ? Math.max(0, Math.ceil((Date.parse(deadline) - serverNow) / 1000)) : null;
+  const remaining = deadline && serverNow !== null ? Math.max(0, (Date.parse(deadline) - serverNow) / 1000) : null;
   const balance = you?.balance ?? 0;
   // While the dealer's cards turn, the balance stays where it was (the result is not out yet).
   const shownBalance = reveal ? reveal.balance : balance;
@@ -194,7 +249,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const shownCards = (round?.hands.reduce((sum, hand) => sum + hand.cards.length, 0) ?? 0) + (round?.dealer.filter((card) => card !== null).length ?? 0);
   const previousCards = useRef(shownCards);
   useEffect(() => {
-    if (shownCards > previousCards.current) play("flip");
+    if (shownCards > previousCards.current && Date.now() > dealSoundsUntil.current) play("flip");
     previousCards.current = shownCards;
   }, [shownCards]);
 
@@ -218,6 +273,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   // The middle seats first: they see the whole table.
   const preferredSeat = [4, 3, 5, 2, 6, 1, 7].find((seat) => freeSeats.includes(seat)) ?? null;
   const takeSeat = (seat: number | null) => seat !== null && run(() => sit(table, seat), "click");
+  // The chip goes on every seat the player holds.
   const placeBet = () => mySeat !== null && run(() => bet(table, chip), "chip");
   const clearBet = () => mySeat !== null && run(() => bet(table, null), "click");
   const move = (next: Move) => myTurn && run(() => act(table, next));
@@ -226,6 +282,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const canSplitNow = !!myTurnHand && canSplit(myTurnHand) && balance >= myTurnHand.bet;
   const betting = round?.status === "betting";
   const handInPlay = round?.status === "playing" && round.hands.some(mine);
+  const iAmIn = myBets.some((amount) => amount !== null) || handInPlay;
 
   useGameKeys({
     h: () => move("hit"),
@@ -248,7 +305,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
           ? "Take a seat to play"
           : "This table is full"
       : myTurn
-        ? `Your move · ${secondsLeft ?? ""}s`
+        ? `Your move${mySeats.length > 1 && turnHand ? ` at seat ${turnHand.seat}` : ""}: hit, stand, double or split`
         : round?.status === "playing"
           ? handInPlay
             ? `Waiting for ${turnHand?.name ?? "the table"}`
@@ -256,7 +313,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
           : seatBet !== null
             ? betters < 2
               ? "Bet placed · waiting for a second player"
-              : `Bet placed · cards in ${secondsLeft ?? ""}s`
+              : "Bet placed · the cards are coming"
             : betters >= 1
               ? `Place a bet to join · ${betters} ready`
               : "Place a bet · the round starts with two players";
@@ -285,7 +342,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
             <span>
               {mySeat !== null ? (
                 <>
-                  Seat {mySeat} · <span className="font-semibold text-text">{myName}</span>
+                  {mySeats.length > 1 ? `Seats ${mySeats.join(", ")}` : `Seat ${mySeat}`} · <span className="font-semibold text-text">{myName}</span>
                 </>
               ) : (
                 `Table ${table}`
@@ -305,25 +362,33 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
                   </button>
                 ))}
               {mySeat !== null && !handInPlay && (
-                <button type="button" onClick={() => run(() => leave(table), "click")} className="rounded-lg border border-line px-2 py-1 font-semibold text-muted transition hover:border-danger/40 hover:text-danger">
-                  Leave seat
+                <button type="button" onClick={() => run(() => leave(table, null), "click")} className="rounded-lg border border-line px-2 py-1 font-semibold text-muted transition hover:border-danger/40 hover:text-danger">
+                  {mySeats.length > 1 ? "Leave table" : "Leave seat"}
                 </button>
               )}
             </span>
           </div>
         ) : undefined
       }
-      bet={{ bets, bet: chip, onChange: setChip, disabled: mySeat === null || !betting, affordable: (amount) => amount <= balance }}
+      bet={{ bets, bet: chip, onChange: setChip, disabled: mySeat === null || !betting, affordable: (amount) => amount * Math.max(1, mySeats.length) <= balance }}
       play={
         myTurn
-          ? { label: "Stand", amount: myTurnHand?.bet, onPlay: () => move("stand"), playable: !busy, auto: "off", onAuto: () => undefined, lockable: false, kbd: <Kbd>S</Kbd> }
+          ? { label: "Hit", amount: myTurnHand?.bet, onPlay: () => move("hit"), playable: !busy, auto: "off", onAuto: () => undefined, lockable: false, tone: "green", kbd: <Kbd>H</Kbd> }
           : mySeat === null
             ? { label: "Take a seat", amount: chip, onPlay: () => takeSeat(preferredSeat), playable: preferredSeat !== null && !busy && enabled, auto: "off", onAuto: () => undefined, lockable: false, kbd: <Kbd>Enter</Kbd> }
             : {
-                label: !betting ? "Next round" : seatBet === null ? "Place bet" : seatBet === chip ? "Bet placed" : "Change bet",
-                amount: chip,
+                label: !betting
+                  ? "Next round"
+                  : seatBet === null
+                    ? mySeats.length > 1
+                      ? `Place bet × ${mySeats.length} seats`
+                      : "Place bet"
+                    : seatBet === chip
+                      ? "Bet placed"
+                      : "Change bet",
+                amount: betTotal,
                 onPlay: placeBet,
-                playable: betting && seatBet !== chip && chip <= balance && !busy && enabled,
+                playable: betting && seatBet !== chip && betTotal <= balance && !busy && enabled,
                 auto: "off",
                 onAuto: () => undefined,
                 lockable: false,
@@ -334,11 +399,11 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         myTurn ? (
           <button
             type="button"
-            onClick={() => move("hit")}
+            onClick={() => move("stand")}
             disabled={busy}
-            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#5ee39b,#1f9d5c)] px-3 font-bold text-[#062915] shadow-[0_10px_30px_-12px_rgba(94,227,155,0.7)] transition enabled:hover:brightness-110 disabled:opacity-45 lg:min-h-14 lg:rounded-2xl lg:text-lg"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(180deg,var(--color-gold-bright),var(--color-gold))] px-3 font-bold text-[#1a1204] shadow-[0_10px_30px_-12px_rgba(233,180,76,0.8)] transition enabled:hover:brightness-110 disabled:opacity-45 lg:min-h-14 lg:rounded-2xl lg:text-lg"
           >
-            Hit <Kbd>H</Kbd>
+            Stand <Kbd>S</Kbd>
           </button>
         ) : undefined
       }
@@ -387,47 +452,94 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const dealerCards = shown && revealing && reveal ? shown.dealer.flatMap((card, index) => (index < reveal.step ? [card] : index === 1 ? [null] : [])) : (shown?.dealer ?? []);
   const dealerTotal = revealing ? handTotal(dealerCards).total : (shown?.dealerTotal ?? 0);
 
+  // The deal order: each hand's first card, the dealer's, then the second round (cards fly in one after the other).
+  const dealt = (shown?.hands ?? []).filter((hand) => hand.part === 0).map((hand) => hand.seat);
+  const places = size.width >= 640 ? PLACES.wide : PLACES.narrow;
+  // From a place to the shoe, in pixels: where that place's cards come from.
+  const fromShoe = (x: number, y: number) => ({ x: ((SHOE[0] - x) / 100) * size.width, y: ((SHOE[1] - y) / 100) * size.height + 40 });
+
+  const clock =
+    remaining !== null && round?.status === "betting" && round.startsAt
+      ? { label: "Cards in", total: DEAL_SECONDS, urgent: false, audible: iAmIn }
+      : remaining !== null && round?.status === "playing" && turnHand
+        ? { label: myTurn ? "Your move" : turnHand.name, total: TURN_SECONDS, urgent: myTurn, audible: myTurn }
+        : null;
+  const status = revealing
+    ? "Dealer plays"
+    : !round
+      ? "Opening the table…"
+      : round.status === "betting" && !round.startsAt
+        ? betters === 1
+          ? "Waiting for a second player"
+          : fading
+            ? "Place your bets"
+            : "Take a seat and bet · two players start a round"
+        : null;
+
   return (
     <GameFrame gameId="blackjack" payoutBps={game.payoutBps} onBack={onBack} info={rules} panel={panel} toast={toast}>
       <div
+        ref={felt}
         data-live={live ? "on" : "off"}
-        className="@container relative flex h-full flex-col overflow-hidden bg-[radial-gradient(ellipse_at_50%_0%,#123726_0%,#0a1f15_45%,#050a07_100%)] sm:rounded-2xl sm:border sm:border-gold/25"
+        className="@container relative h-full overflow-hidden bg-[radial-gradient(ellipse_at_50%_100%,#14100a,#050506_70%)] sm:rounded-2xl sm:border sm:border-gold/25"
       >
-        {/* The rim and the printed rules of the table. */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-[4%] bottom-[-55%] top-[18%] hidden rounded-[50%] border border-gold/25 shadow-[inset_0_0_80px_rgba(0,0,0,0.5)] @[40rem]:block" />
+        <Felt />
+        <Shoe />
+        <Dealer
+          roundId={shown?.id ?? null}
+          cards={dealerCards}
+          total={dealerTotal}
+          faded={fading}
+          playing={revealing}
+          slow={revealing && !!reveal?.slow && reveal.step === 1}
+          dealtCount={dealt.length}
+          reduce={!!reduce}
+        />
 
-        <Dealer roundId={shown?.id ?? null} cards={dealerCards} total={dealerTotal} faded={fading} slow={revealing && !!reveal?.slow && reveal.step === 1} />
-
-        <div className="relative z-10 flex min-h-12 flex-1 flex-col items-center justify-center gap-1 px-3 text-center">
-          <p className="font-mono text-[0.58rem] uppercase tracking-[0.22em] text-gold/60 @[40rem]:text-[0.66rem]">Blackjack pays 3 to 2 · Dealer stands on 17</p>
-          <Banner round={round} betters={betters} secondsLeft={secondsLeft} turnName={turnHand?.name ?? null} myTurn={myTurn} fading={fading} dealer={revealing} />
+        {/* The middle of the table: the countdown, or what the table is waiting for. */}
+        <div className="absolute inset-x-0 top-[39%] z-20 flex -translate-y-1/2 flex-col items-center gap-2 px-3 text-center @[40rem]:top-[41%]">
+          {clock && remaining !== null ? (
+            <TableClock key={`${round?.id}-${round?.status}-${round?.turnHand}`} label={clock.label} remaining={remaining} total={clock.total} urgent={clock.urgent} audible={clock.audible} />
+          ) : (
+            status && (
+              <p className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-xs font-semibold text-muted @[40rem]:text-sm">{status}</p>
+            )
+          )}
         </div>
 
-        <div className="relative z-10 grid shrink-0 grid-cols-4 gap-1 px-1.5 pb-2 @[40rem]:block @[40rem]:h-[52%] @[40rem]:px-0 @[40rem]:pb-0">
-          {ARC.map((place, index) => {
-            const number = index + 1;
-            const seat = view?.seats.find((entry) => entry.seat === number) ?? null;
-            // Results stay hidden until the dealer's last card is up.
-            const hands = (shown?.hands.filter((hand) => hand.seat === number) ?? []).map((hand) => (revealing ? { ...hand, result: null } : hand));
-            return (
-              <Seat
-                key={number}
-                number={number}
-                place={place}
-                // An empty seat is free to take; only a hand still in play keeps its player's name there.
-                name={seat?.name ?? (fading ? null : (hands[0]?.name ?? null))}
-                pendingBet={seat?.bet ?? null}
-                hands={hands}
-                faded={fading}
-                you={number === mySeat}
-                turnHandId={round?.status === "playing" ? round.turnHand : null}
-                secondsLeft={secondsLeft}
-                canSit={!seat && mySeat === null && !busy && enabled}
-                onSit={() => takeSeat(number)}
-              />
-            );
-          })}
-        </div>
+        {Array.from({ length: SEATS }, (_, index) => {
+          const number = index + 1;
+          const [x, y] = places[index];
+          const seat = view?.seats.find((entry) => entry.seat === number) ?? null;
+          // Results stay hidden until the dealer's last card is up.
+          const hands = (shown?.hands.filter((hand) => hand.seat === number) ?? []).map((hand) => (revealing ? { ...hand, result: null } : hand));
+          const active = hands.find((hand) => hand.id === turnHand?.id) ?? null;
+          return (
+            <Place
+              key={number}
+              number={number}
+              x={x}
+              y={y}
+              front={mySeats.includes(number)}
+              name={seat?.name ?? (fading ? null : (hands[0]?.name ?? null))}
+              pendingBet={seat?.bet ?? null}
+              highRoller={!!seat?.highRoller}
+              hands={hands}
+              faded={fading}
+              you={mySeats.includes(number)}
+              onLeave={mySeats.length > 1 && !handInPlay ? () => run(() => leave(table, number), "click") : null}
+              activeHand={active?.id ?? null}
+              timeShare={active && remaining !== null ? remaining / TURN_SECONDS : null}
+              // A free seat can be taken by anyone, also by a player who already sits here (one more hand).
+              canSit={!seat && !busy && enabled && (mySeat === null || betting)}
+              onSit={() => takeSeat(number)}
+              fly={fromShoe(x, y)}
+              dealIndex={dealt.indexOf(number)}
+              dealtCount={dealt.length}
+              reduce={!!reduce}
+            />
+          );
+        })}
 
         <AnimatePresence>
           {burst && <WinBurst key={burst.id} amount={burst.paid} onDone={() => setBurstSeen(burst.id)} />}
@@ -440,7 +552,7 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   );
 }
 
-/** Double and split, under Hit and Stand. */
+/** Double and split, under Stand and Hit. */
 function ActionButton({ label, shortcut, onClick, disabled }: { label: string; shortcut: string; onClick(): void; disabled: boolean }) {
   return (
     <button
@@ -454,167 +566,356 @@ function ActionButton({ label, shortcut, onClick, disabled }: { label: string; s
   );
 }
 
-/** The dealer's cards at the top of the table, the hole card face down while players decide. */
-function Dealer({ roundId, cards, total, faded, slow }: { roundId: number | null; cards: (Card | null)[]; total: number; faded: boolean; slow: boolean }) {
+/**
+ * The table: green cloth with a leather rail and a gold line along the players'
+ * edge, the rules printed in an arc, and a slow light passing over the cloth.
+ */
+function Felt() {
   return (
-    <div
-      data-dealer-up={cards.filter((card) => card !== null).length}
-      className={`relative z-10 flex flex-col items-center gap-1 pt-3 transition-opacity @[40rem]:pt-5 ${faded ? "opacity-45" : ""}`}
-    >
-      <p className="flex items-center gap-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-gold/80">
-        Dealer
-        {cards.length > 0 && <TotalPill total={total} />}
-        {slow && <span className="animate-pulse rounded-full bg-gold/20 px-1.5 text-[0.6rem] text-gold-bright">Blackjack?</span>}
-      </p>
-      <div className="flex h-[clamp(3.6rem,14cqw,7.7rem)] items-center">
-        {cards.length === 0 ? (
-          <span className="h-full w-[clamp(2.6rem,10cqw,5.5rem)] rounded-md border border-dashed border-gold/20" />
-        ) : (
-          cards.map((card, index) => (
-            <span key={`${roundId}-${index}-${card === null ? "down" : "up"}`} className={index > 0 ? "-ml-[clamp(1rem,3.5cqw,2rem)]" : ""}>
-              <PlayingCard card={card} size="dealer" />
-            </span>
-          ))
-        )}
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <div className="absolute bottom-[2%] left-[-22%] right-[-22%] top-[-70%] rounded-[50%] bg-[radial-gradient(ellipse_at_50%_70%,#1d6342_0%,#124a31_42%,#0b2f1f_78%)] shadow-[0_0_0_9px_#1f150c,0_0_0_11px_rgba(233,180,76,0.6),0_0_0_13px_#120c07,0_30px_70px_rgba(0,0,0,0.75)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(105deg,transparent_38%,rgba(255,255,255,0.06)_50%,transparent_62%)] bg-[length:260%_100%] animate-felt-sheen motion-reduce:animate-none" />
+      <svg viewBox="0 0 200 60" className="absolute left-[30%] top-[51%] h-[10%] w-[40%] overflow-visible" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <path id="bj-arc-1" d="M 18 10 Q 100 52 182 10" />
+          <path id="bj-arc-2" d="M 30 24 Q 100 62 170 24" />
+        </defs>
+        <text fill="rgba(233,180,76,0.6)" fontSize="8.5" fontWeight="700" letterSpacing="2.4" style={{ fontFamily: "var(--font-mono)" }}>
+          <textPath href="#bj-arc-1" startOffset="50%" textAnchor="middle">
+            BLACKJACK PAYS 3 TO 2
+          </textPath>
+        </text>
+        <text fill="rgba(233,180,76,0.38)" fontSize="5.5" letterSpacing="1.6" style={{ fontFamily: "var(--font-mono)" }}>
+          <textPath href="#bj-arc-2" startOffset="50%" textAnchor="middle">
+            DEALER STANDS ON 17
+          </textPath>
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/** The shoe the cards come from, at the dealer's right. */
+function Shoe() {
+  return (
+    <div aria-hidden="true" className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rotate-[-10deg]" style={{ left: `${SHOE[0]}%`, top: `${SHOE[1] + 4}%` }}>
+      <div className="relative aspect-[5/7] w-[clamp(1.8rem,6.5cqw,3.4rem)]">
+        <CardBack className="absolute inset-0 translate-x-[3px] translate-y-[3px] opacity-60" />
+        <CardBack className="absolute inset-0 translate-x-[1.5px] translate-y-[1.5px] opacity-80" />
+        <CardBack className="absolute inset-0 shadow-lg shadow-black/70" />
       </div>
     </div>
   );
 }
 
-function Banner({
-  round,
-  betters,
-  secondsLeft,
-  turnName,
-  myTurn,
-  fading,
-  dealer,
+/** The dealer: the Gator behind the table, the dealer's cards on the cloth in front of him. */
+function Dealer({
+  roundId,
+  cards,
+  total,
+  faded,
+  playing,
+  slow,
+  dealtCount,
+  reduce,
 }: {
-  round: BlackjackRound | null;
-  betters: number;
-  secondsLeft: number | null;
-  turnName: string | null;
-  myTurn: boolean;
-  fading: boolean;
-  dealer: boolean;
+  roundId: number | null;
+  cards: (Card | null)[];
+  total: number;
+  faded: boolean;
+  playing: boolean;
+  slow: boolean;
+  dealtCount: number;
+  reduce: boolean;
 }) {
-  const text = dealer
-    ? "Dealer plays"
-    : !round
-    ? "Opening the table…"
-    : round.status === "playing"
-      ? myTurn
-        ? `Your move · ${secondsLeft ?? ""}`
-        : `${turnName ?? "Player"} · ${secondsLeft ?? ""}`
-      : round.status === "done"
-        ? "Dealer plays"
-        : round.startsAt
-          ? `Cards in ${secondsLeft ?? ""}`
-          : betters === 1
-            ? "Waiting for a second player"
-            : fading
-              ? "Place your bets"
-              : "Take a seat and bet · two players start a round";
   return (
-    <p
-      className={`rounded-full border px-3 py-1 text-xs font-semibold tabular-nums @[40rem]:text-sm ${
-        myTurn ? "border-gold bg-gold/20 text-gold-bright shadow-[0_0_24px_rgba(233,180,76,0.35)]" : round?.startsAt ? "border-gold/40 bg-black/50 text-gold-bright" : "border-white/10 bg-black/40 text-muted"
-      }`}
-    >
-      {text}
-    </p>
+    <div data-dealer-up={cards.filter((card) => card !== null).length} className="absolute left-1/2 top-[1%] z-10 flex -translate-x-1/2 flex-col items-center">
+      <motion.div
+        className="relative w-[clamp(5rem,22cqw,9.5rem)]"
+        animate={reduce ? undefined : playing ? { y: [0, -4, 0], scale: [1, 1.04, 1] } : { y: [0, -2, 0] }}
+        transition={playing ? { duration: 0.9, repeat: Infinity } : { duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+      >
+        {playing && <span className="absolute inset-[8%] rounded-full bg-gold/35 blur-2xl" />}
+        {/* eslint-disable-next-line @next/next/no-img-element -- DEGEN #007, the Gator, from the 300 DEGEN collection */}
+        <img
+          src="/blackjack/dealer-gator.jpg"
+          alt="The dealer: the Gator, DEGEN #007"
+          className="relative aspect-square w-full object-cover [mask-image:radial-gradient(ellipse_50%_52%_at_50%_44%,black_62%,transparent_100%)]"
+        />
+      </motion.div>
+      <p className="-mt-[12%] flex items-center gap-1.5 rounded-full border border-gold/40 bg-black/75 px-2 py-0.5 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-gold-bright shadow-lg">
+        Dealer
+        {cards.length > 0 && <TotalPill total={total} />}
+        {slow && <span className="animate-pulse rounded-full bg-gold/25 px-1.5 tracking-normal">Blackjack?</span>}
+      </p>
+      <div className={`mt-1 flex h-[clamp(3.2rem,12cqw,6.6rem)] items-center transition-opacity ${faded ? "opacity-45" : ""}`}>
+        {cards.map((card, index) => (
+          <span key={`${roundId}-${index}-${card === null ? "down" : "up"}`} className={index > 0 ? "-ml-[clamp(0.9rem,3.2cqw,1.8rem)]" : ""}>
+            <PlayingCard
+              card={card}
+              size="dealer"
+              // The hole card turns over in place; every other card comes from the shoe.
+              entry={index === 1 && card !== null ? { flip: true } : { x: 160, y: -10, delay: index < 2 && !playing ? (index * (dealtCount + 1) + dealtCount) * 0.18 : 0 }}
+              reduce={reduce}
+            />
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function Seat({
+/**
+ * The countdown in the middle of the table: a ring that runs down, and the last
+ * three seconds one by one in big numbers.
+ */
+function TableClock({ label, remaining, total, urgent, audible }: { label: string; remaining: number; total: number; urgent: boolean; audible: boolean }) {
+  const seconds = Math.ceil(remaining);
+  const final = remaining > 0 && seconds <= 3 ? seconds : null;
+  const circumference = 2 * Math.PI * 44;
+  const share = Math.max(0, Math.min(1, remaining / total));
+  useEffect(() => {
+    if (final !== null && audible) play("tick");
+  }, [final, audible]);
+  const color = final !== null ? "#ff4d4d" : urgent ? "var(--color-gold-bright)" : "var(--color-gold)";
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div className={`relative grid size-[clamp(3.6rem,13cqw,5.4rem)] place-items-center transition-opacity duration-200 ${final !== null ? "opacity-0" : ""}`}>
+        <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90">
+          <circle cx="50" cy="50" r="44" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.1)" strokeWidth="7" />
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke={color}
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - share)}
+            className="transition-[stroke-dashoffset,stroke] duration-300 ease-linear"
+            style={{ filter: `drop-shadow(0 0 6px ${color})` }}
+          />
+        </svg>
+        <span className="relative font-mono text-[clamp(1.1rem,4.4cqw,1.7rem)] font-bold tabular-nums" style={{ color }}>
+          {seconds}
+        </span>
+      </div>
+      <p
+        className={`max-w-[60cqw] truncate rounded-full border px-3 py-0.5 text-xs font-semibold transition-opacity @[40rem]:text-sm ${final !== null ? "opacity-0" : ""} ${
+          urgent ? "border-gold bg-gold/20 text-gold-bright shadow-[0_0_24px_rgba(233,180,76,0.4)]" : "border-gold/30 bg-black/55 text-gold-bright"
+        }`}
+      >
+        {label}
+      </p>
+      {/* The last three seconds, one by one, big. */}
+      <AnimatePresence>
+        {final !== null && (
+          <motion.span
+            key={final}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 font-black tabular-nums text-[clamp(4rem,22cqw,9rem)] leading-none text-[#ff4d4d] [text-shadow:0_0_30px_rgba(255,60,60,0.75),0_6px_0_rgba(0,0,0,0.6)]"
+            initial={{ opacity: 0, scale: 2.4, x: "-50%", y: "-50%" }}
+            animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+            exit={{ opacity: 0, scale: 0.5, x: "-50%", y: "-50%" }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+          >
+            {final}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** One place at the rail: the player's plate, their bet and their cards on the cloth in front of it. */
+function Place({
   number,
-  place,
+  x,
+  y,
+  front,
   name,
   pendingBet,
   hands,
   faded,
   you,
-  turnHandId,
-  secondsLeft,
+  activeHand,
+  timeShare,
   canSit,
   onSit,
+  fly,
+  dealIndex,
+  dealtCount,
+  reduce,
+  highRoller,
+  onLeave,
 }: {
   number: number;
-  place: { left: number; top: number };
+  /** Leaves just this seat (a player holding several). */
+  onLeave: (() => void) | null;
+  x: number;
+  y: number;
+  /** The viewer's own seat: bigger cards. */
+  front: boolean;
   name: string | null;
   pendingBet: number | null;
+  highRoller: boolean;
   hands: BlackjackHand[];
   faded: boolean;
   you: boolean;
-  turnHandId: number | null;
-  secondsLeft: number | null;
+  activeHand: number | null;
+  /** While it is this place's turn: the share of the decision time left. */
+  timeShare: number | null;
   canSit: boolean;
   onSit(): void;
+  fly: { x: number; y: number };
+  dealIndex: number;
+  dealtCount: number;
+  reduce: boolean;
 }) {
-  const active = hands.some((hand) => hand.id === turnHandId);
+  const active = activeHand !== null;
   return (
     <div
-      className="flex min-w-0 flex-col items-center gap-1 @[40rem]:absolute @[40rem]:w-[13%] @[40rem]:-translate-x-1/2 @[40rem]:-translate-y-1/2 @[40rem]:[left:var(--x)] @[40rem]:[top:var(--y)]"
-      style={{ "--x": `${place.left}%`, "--y": `${place.top}%` } as React.CSSProperties}
+      className={`absolute flex -translate-x-1/2 -translate-y-full flex-col items-center gap-1 ${front ? "z-20 w-[clamp(5.2rem,21cqw,10rem)]" : "z-10 w-[clamp(4rem,16cqw,7.5rem)]"}`}
+      style={{ left: `${x}%`, top: `${y}%` }}
     >
-      <div className={`flex min-h-[clamp(3.2rem,11cqw,6rem)] items-end justify-center gap-1 transition-opacity ${faded ? "opacity-45" : ""}`}>
-        {hands.map((hand) => (
-          <Hand key={hand.id} hand={hand} active={hand.id === turnHandId} secondsLeft={secondsLeft} />
-        ))}
+      {/* The cloth in front of the player: cards, or the chip of a bet for the next deal. */}
+      <div className={`flex items-end justify-center gap-1 transition-opacity ${faded ? "opacity-45" : ""} ${front ? "min-h-[clamp(3.8rem,13cqw,7rem)]" : "min-h-[clamp(2.6rem,9cqw,4.6rem)]"}`}>
+        {/* A bet for the next deal shows over the faded cards of the last round. */}
+        {hands.length && !(faded && pendingBet !== null) ? (
+          hands.map((hand) => <Hand key={hand.id} hand={hand} front={front} active={hand.id === activeHand} fly={fly} dealIndex={dealIndex} dealtCount={dealtCount} reduce={reduce} />)
+        ) : pendingBet !== null ? (
+          <motion.span initial={reduce ? false : { y: 24, opacity: 0, scale: 0.6 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 20 }}>
+            <Chip amount={pendingBet} big={front} />
+          </motion.span>
+        ) : null}
       </div>
       {name ? (
         <div
-          className={`flex w-full min-w-0 flex-col items-center rounded-xl border px-1 py-1 text-center ${
-            active ? "border-gold bg-gold/15 shadow-[0_0_18px_rgba(233,180,76,0.45)]" : you ? "border-gold/50 bg-black/55" : "border-white/10 bg-black/45"
+          className={`relative w-full min-w-0 overflow-hidden rounded-xl border px-1 pb-1.5 pt-1 text-center backdrop-blur-sm transition ${
+            active
+              ? "border-gold bg-gold/20 shadow-[0_0_22px_rgba(233,180,76,0.55)]"
+              : highRoller
+                ? "border-gold/80 bg-[linear-gradient(180deg,rgba(233,180,76,0.22),rgba(0,0,0,0.7))] shadow-[0_0_16px_rgba(233,180,76,0.35)]"
+                : you
+                  ? "border-gold/60 bg-black/65"
+                  : "border-white/10 bg-black/55"
           }`}
         >
-          <span className={`max-w-full truncate text-[0.62rem] font-semibold @[40rem]:text-xs ${you ? "text-gold-bright" : "text-text"}`} title={name}>
+          {highRoller && (
+            <span className="mb-0.5 flex items-center justify-center gap-1 font-mono text-[0.5rem] font-bold uppercase tracking-[0.14em] text-gold-bright @[40rem]:text-[0.58rem]" title="More than 1,000,000 game credit">
+              <svg viewBox="0 0 24 24" className="size-2.5 @[40rem]:size-3" fill="currentColor" aria-hidden="true">
+                <path d="M3 8l4.5 3.5L12 4l4.5 7.5L21 8l-2 11H5z" />
+              </svg>
+              High roller
+            </span>
+          )}
+          <span className={`block truncate font-semibold ${front ? "text-xs @[40rem]:text-sm" : "text-[0.58rem] @[40rem]:text-xs"} ${you ? "text-gold-bright" : "text-text"}`} title={name}>
             {name}
           </span>
-          <span className="font-mono text-[0.55rem] text-faint">
-            {pendingBet !== null ? <span className="text-gold">bet {formatTokenAmount(BigInt(pendingBet))}</span> : you ? "you" : `seat ${number}`}
-          </span>
+          <span className="block font-mono text-[0.52rem] text-faint @[40rem]:text-[0.6rem]">{you ? `you · seat ${number}` : `seat ${number}`}</span>
+          {onLeave && (
+            <button
+              type="button"
+              onClick={onLeave}
+              aria-label={`Leave seat ${number}`}
+              title={`Leave seat ${number}`}
+              className="absolute right-0.5 top-0.5 grid size-4 place-items-center rounded-full text-[0.6rem] text-faint transition hover:bg-danger/20 hover:text-danger"
+            >
+              ×
+            </button>
+          )}
+          {/* The time this player has left for the decision, running down. */}
+          {timeShare !== null && (
+            <span className="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+              <span
+                className={`block h-full transition-[width] duration-300 ease-linear ${timeShare <= 0.15 ? "bg-[#ff4d4d]" : "bg-gold-bright"}`}
+                style={{ width: `${Math.round(timeShare * 100)}%` }}
+              />
+            </span>
+          )}
         </div>
-      ) : (
+      ) : canSit ? (
         <button
           type="button"
           onClick={onSit}
-          disabled={!canSit}
-          className="grid h-[2.6rem] w-full place-items-center rounded-xl border border-dashed border-gold/25 text-[0.62rem] font-semibold text-gold/70 transition enabled:hover:border-gold/60 enabled:hover:bg-gold/10 enabled:hover:text-gold-bright disabled:text-faint/60 @[40rem]:text-xs"
+          className="grid h-[2.3rem] w-full place-items-center rounded-xl border border-dashed border-gold/40 bg-black/30 text-[0.6rem] font-semibold text-gold/80 transition hover:border-gold/70 hover:bg-gold/10 hover:text-gold-bright @[40rem]:text-xs"
           aria-label={`Sit at seat ${number}`}
         >
-          {canSit ? "+ Sit" : `Seat ${number}`}
+          + Sit · {number}
         </button>
+      ) : (
+        // An empty seat while the viewer sits elsewhere: just its place at the rail.
+        <span aria-label={`Seat ${number} is free`} className="grid size-8 place-items-center rounded-full border border-dashed border-white/15 font-mono text-[0.6rem] text-faint/70">
+          {number}
+        </span>
       )}
     </div>
   );
 }
 
-function Hand({ hand, active, secondsLeft }: { hand: BlackjackHand; active: boolean; secondsLeft: number | null }) {
+function Hand({
+  hand,
+  front,
+  active,
+  fly,
+  dealIndex,
+  dealtCount,
+  reduce,
+}: {
+  hand: BlackjackHand;
+  front: boolean;
+  active: boolean;
+  fly: { x: number; y: number };
+  dealIndex: number;
+  dealtCount: number;
+  reduce: boolean;
+}) {
   return (
     <div className="relative flex flex-col items-center">
-      <div className="flex items-center gap-1">
-        <TotalPill total={hand.total} bust={hand.status === "bust"} blackjack={hand.status === "blackjack"} />
-        {active && secondsLeft !== null && <span className="rounded-full bg-gold px-1.5 font-mono text-[0.6rem] font-bold text-ink tabular-nums">{secondsLeft}</span>}
-      </div>
-      <div className={`mt-0.5 flex rounded-md ${active ? "ring-2 ring-gold ring-offset-2 ring-offset-[#0a1f15]" : ""}`}>
+      <TotalPill total={hand.total} bust={hand.status === "bust"} blackjack={hand.status === "blackjack"} />
+      <div className={`mt-0.5 flex rounded-md transition ${active ? "ring-2 ring-gold ring-offset-2 ring-offset-[#124a31]" : ""}`}>
         {hand.cards.map((card, index) => (
-          <span key={index} className={index > 0 ? "-ml-[clamp(0.9rem,3.2cqw,1.9rem)]" : ""}>
-            <PlayingCard card={card} size="seat" />
+          <span key={`${index}-${card}`} className={index > 0 ? (front ? "-ml-[clamp(1.4rem,5cqw,2.6rem)]" : "-ml-[clamp(0.8rem,3cqw,1.5rem)]") : ""}>
+            <PlayingCard
+              card={card}
+              size={front ? "front" : "seat"}
+              // The first two cards come in the order of the deal; later ones at once.
+              entry={{ ...fly, delay: index < 2 && hand.part === 0 && dealIndex >= 0 ? (index * (dealtCount + 1) + dealIndex) * 0.18 : 0 }}
+              reduce={reduce}
+            />
           </span>
         ))}
       </div>
-      <span className="mt-0.5 rounded-full bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] px-1.5 font-mono text-[0.55rem] font-bold text-[#1a1204] tabular-nums shadow">
-        {formatTokenAmount(BigInt(hand.bet))}
-        {hand.doubled ? " ×2" : ""}
+      <span className="mt-1">
+        <Chip amount={hand.bet} doubled={hand.doubled} big={front} />
       </span>
       {hand.result && (
-        <span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.6rem] font-bold uppercase shadow-lg @[40rem]:text-xs ${RESULT_STYLE[hand.result]}`}>
+        <motion.span
+          className={`absolute left-1/2 top-1/2 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.6rem] font-bold uppercase shadow-lg @[40rem]:text-xs ${RESULT_STYLE[hand.result]}`}
+          initial={reduce ? false : { scale: 0.4, opacity: 0, x: "-50%", y: "-50%" }}
+          animate={{ scale: 1, opacity: 1, x: "-50%", y: "-50%" }}
+          transition={{ type: "spring", stiffness: 380, damping: 18 }}
+        >
           {RESULT_LABEL[hand.result]}
           {hand.payout > hand.bet ? ` +${formatTokenAmount(BigInt(hand.payout - hand.bet))}` : ""}
-        </span>
+        </motion.span>
       )}
     </div>
+  );
+}
+
+/** A gold chip with the amount on it. */
+function Chip({ amount, doubled, big }: { amount: number; doubled?: boolean; big?: boolean }) {
+  return (
+    <span
+      className={`grid place-items-center rounded-full border-2 border-dashed border-[#1a1204]/45 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] font-mono font-bold tabular-nums text-[#1a1204] shadow-[0_3px_8px_rgba(0,0,0,0.6)] ${
+        big ? "h-7 min-w-12 px-1.5 text-[0.68rem]" : "h-5 min-w-9 px-1 text-[0.55rem]"
+      }`}
+    >
+      {formatTokenAmount(BigInt(amount))}
+      {doubled ? " ×2" : ""}
+    </span>
   );
 }
 
@@ -622,7 +923,7 @@ function TotalPill({ total, bust, blackjack }: { total: number; bust?: boolean; 
   return (
     <span
       className={`rounded-full px-1.5 font-mono text-[0.6rem] font-bold tabular-nums @[40rem]:text-[0.68rem] ${
-        bust ? "bg-danger/90 text-white" : blackjack ? "bg-gold text-ink" : "bg-black/70 text-text"
+        bust ? "bg-danger/90 text-white" : blackjack ? "bg-gold text-ink" : "bg-black/75 text-text"
       }`}
     >
       {blackjack ? "BJ" : total}
@@ -630,14 +931,30 @@ function TotalPill({ total, bust, blackjack }: { total: number; bust?: boolean; 
   );
 }
 
-/** A card of the 300 deck with its index (rank and suit) in the corner; null is face down. */
-function PlayingCard({ card, size }: { card: Card | null; size: "seat" | "dealer" }) {
-  const width = size === "dealer" ? "w-[clamp(2.6rem,10cqw,5.5rem)]" : "w-[clamp(2.1rem,8cqw,4.4rem)]";
+/**
+ * A card of the 300 deck with its index (rank and suit) in the corner; null is
+ * face down. It flies in from the shoe (`x`, `y`: the shoe as seen from the
+ * card's place) or, for the dealer's hole card, turns over in place.
+ */
+function PlayingCard({
+  card,
+  size,
+  entry,
+  reduce,
+}: {
+  card: Card | null;
+  size: "seat" | "front" | "dealer";
+  entry: { x: number; y: number; delay: number } | { flip: true };
+  reduce: boolean;
+}) {
+  const width = size === "dealer" ? "w-[clamp(2.4rem,9cqw,4.8rem)]" : size === "front" ? "w-[clamp(3rem,11.5cqw,5.4rem)]" : "w-[clamp(1.5rem,5.6cqw,3.1rem)]";
+  const initial = reduce ? false : "flip" in entry ? { rotateY: 90, opacity: 0.4 } : { x: entry.x, y: entry.y, rotate: -24, scale: 0.7, opacity: 0 };
+  const transition = "flip" in entry ? { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const } : { type: "spring" as const, stiffness: 170, damping: 22, delay: entry.delay };
   if (card === null) {
     return (
-      <span className={`relative block aspect-[5/7] ${width}`}>
+      <motion.span className={`relative block aspect-[5/7] ${width}`} initial={initial} animate={{ x: 0, y: 0, rotate: 0, scale: 1, opacity: 1 }} transition={transition}>
         <CardBack className="absolute inset-0 shadow-md shadow-black/60" />
-      </span>
+      </motion.span>
     );
   }
   const suit = cardSuit(card);
@@ -646,16 +963,16 @@ function PlayingCard({ card, size }: { card: Card | null; size: "seat" | "dealer
   return (
     <motion.span
       className={`relative block aspect-[5/7] overflow-hidden rounded-[12%/9%] bg-[linear-gradient(145deg,#ffe7a8,#e9b44c_42%,#a8691c)] p-[5%] shadow-md shadow-black/60 ${width}`}
-      initial={{ y: -24, opacity: 0, rotate: -6 }}
-      animate={{ y: 0, opacity: 1, rotate: 0 }}
-      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+      initial={initial}
+      animate={{ x: 0, y: 0, rotate: 0, rotateY: 0, scale: 1, opacity: 1 }}
+      transition={transition}
     >
       <span className="relative block size-full overflow-hidden rounded-[9%/7%]" style={{ backgroundColor: SUIT_COLORS[suit] }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={art.src} alt={`${rank}${SUIT_SYMBOLS[suit]}`} className="absolute inset-0 size-full object-cover" style={{ objectPosition: "50% 30%" }} />
         <span className="absolute left-0 top-0 flex flex-col items-center rounded-br-md bg-black/80 px-[8%] py-[4%] leading-none">
-          <span className="text-[clamp(0.55rem,2.1cqw,1.05rem)] font-black text-gold-bright">{rank}</span>
-          <span className="text-[clamp(0.5rem,1.8cqw,0.9rem)]" style={{ color: SUIT_COLORS[suit] }}>
+          <span className={`font-black text-gold-bright ${size === "seat" ? "text-[clamp(0.5rem,1.8cqw,0.9rem)]" : "text-[clamp(0.6rem,2.3cqw,1.15rem)]"}`}>{rank}</span>
+          <span className={size === "seat" ? "text-[clamp(0.45rem,1.6cqw,0.8rem)]" : "text-[clamp(0.55rem,2cqw,1rem)]"} style={{ color: SUIT_COLORS[suit] }}>
             {SUIT_SYMBOLS[suit]}
           </span>
         </span>
