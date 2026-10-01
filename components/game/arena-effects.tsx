@@ -16,20 +16,23 @@ export function WinBurst({
   compact = false,
   title = "You won",
   note = "300 tokens",
+  duration = BURST_MS,
 }: {
   amount: number;
   onDone(): void;
   compact?: boolean;
   title?: string;
   note?: string;
+  /** Milliseconds until it goes (the blackjack table moves on quickly). */
+  duration?: number;
 }) {
   const reduce = useReducedMotion();
   const [seed] = useState(() => Math.floor(Math.random() * 1000));
 
   useEffect(() => {
-    const timer = window.setTimeout(onDone, BURST_MS);
+    const timer = window.setTimeout(onDone, duration);
     return () => window.clearTimeout(timer);
-  }, [onDone]);
+  }, [onDone, duration]);
 
   useEffect(() => play("win"), []);
 
