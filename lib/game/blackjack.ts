@@ -44,7 +44,8 @@ export type BlackjackView = {
   table: number;
   now: string;
   bets: { min: number; max: number; step: number };
-  seats: { seat: number; name: string; bet: number | null }[];
+  /** `highRoller`: the player holds more than 1,000,000 game credit (the balance itself is never sent). */
+  seats: { seat: number; name: string; bet: number | null; highRoller?: boolean }[];
   tables: { id: number; seated: number }[];
   round: BlackjackRound | null;
   /** The round before, while the next one takes bets. */
@@ -53,7 +54,8 @@ export type BlackjackView = {
 
 /** What the server answers a player: the view plus their own place at it. */
 export type BlackjackState = BlackjackView & {
-  you: { seat: number | null; table: number | null; hands: number[]; balance: number };
+  /** `seats`: every seat the player holds at this table (an account may hold several); `seat` is the first. */
+  you: { seat: number | null; seats?: number[]; table: number | null; hands: number[]; balance: number };
 };
 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;

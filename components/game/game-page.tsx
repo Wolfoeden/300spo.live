@@ -89,7 +89,7 @@ const placeBet = (game: string, bet: number, choice: number) => api<PlayResult>(
 const placeStakes = (stakes: number[], ticket: RaceTicket) => api<StakedRaces>("/api/game/play-stakes", { stakes: stakes.map(String), ...ticket });
 const loadBlackjack = (table: number) => api<BlackjackState>(`/api/game/blackjack?table=${table}`);
 const sitBlackjack = (table: number, seat: number) => api<BlackjackState>("/api/game/blackjack-sit", { table, seat });
-const leaveBlackjack = (table: number) => api<BlackjackState>("/api/game/blackjack-leave", { table });
+const leaveBlackjack = (table: number, seat: number | null) => api<BlackjackState>("/api/game/blackjack-leave", { table, seat });
 const betBlackjack = (table: number, amount: number | null) => api<BlackjackState>("/api/game/blackjack-bet", { table, bet: amount === null ? null : String(amount) });
 const actBlackjack = (table: number, move: "hit" | "stand" | "double" | "split") => api<BlackjackState>("/api/game/blackjack-act", { table, move });
 const loadChicken = () => api<ChickenState>("/api/game/chicken");
