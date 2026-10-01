@@ -3,7 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { formatTokenAmount } from "@/lib/format";
-import { canSplit, cardRank, cardSuit, SEATS, type BlackjackHand, type BlackjackRound, type BlackjackState, type BlackjackView, type Card } from "@/lib/game/blackjack";
+import { canSplit, cardRank, cardSuit, cardValue, handTotal, SEATS, type BlackjackHand, type BlackjackRound, type BlackjackState, type BlackjackView, type Card } from "@/lib/game/blackjack";
 import { aceArt, cardArt } from "@/lib/game/card-art";
 import { SUIT_COLORS, SUIT_SYMBOLS } from "@/lib/game/card-race";
 import { subscribeBroadcast } from "@/lib/realtime";
@@ -15,6 +15,7 @@ import { GameFrame, Kbd, useGameKeys, type GameToast } from "./game-frame";
 import { GamePanel, type WalletPanels } from "./terminal";
 
 type Move = "hit" | "stand" | "double" | "split";
+type Reveal = { id: number; step: number; slow: boolean; balance: number };
 
 type Props = {
   game: ArenaGame;
@@ -54,7 +55,7 @@ const ARC = Array.from({ length: SEATS }, (_, index) => {
 
 /**
  * Blackjack for up to seven players at one table. Players take a seat and bet;
- * 15 seconds after the second bet the cards come. Each player has 20 seconds
+ * 10 seconds after the second bet the cards come. Each player has 20 seconds
  * per decision. The table moves on the server; this component shows what the
  * server pushes and sends the player's moves.
  */
@@ -69,13 +70,32 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const [chip, setChip] = useState(bets.min);
   // The round whose win burst has played (or was tapped away).
   const [burstSeen, setBurstSeen] = useState<number | null>(null);
+  // The dealer's turn played back card by card (the server settles it at once): how many dealer cards are up.
+  const [reveal, setReveal] = useState<Reveal | null>(null);
   const now = useClock();
   const settledRounds = useRef(new Set<number>());
+  const viewRef = useRef<BlackjackState | null>(null);
+  const reduceRef = useRef(reduce);
+  useEffect(() => {
+    reduceRef.current = reduce;
+  });
 
-  // The server's answer and the server's clock (countdowns run on it).
+  // The server's answer and the server's clock (countdowns run on it). A round seen in play that comes
+  // back finished starts the dealer's turn: a double knock, then the cards one by one.
   const receive = useCallback((next: BlackjackView, you?: BlackjackState["you"]) => {
     setOffset(Date.parse(next.now) - Date.now());
-    setView((current) => ({ ...next, you: you ?? current?.you ?? { seat: null, table: null, hands: [], balance: 0 } }));
+    const previous = viewRef.current;
+    const before = previous?.round;
+    const finished = next.round?.status === "done" ? next.round : next.last;
+    if (before && before.status !== "done" && finished?.id === before.id && finished.hands.length && !reduceRef.current) {
+      // An ace or a ten up: the dealer may hold blackjack, so it goes 1.5 times slower.
+      const slow = finished.dealer[0] !== null && finished.dealer[0] !== undefined && cardValue(finished.dealer[0]) >= 10;
+      setReveal({ id: finished.id, step: 1, slow, balance: previous.you.balance });
+      play("knock");
+    }
+    const merged = { ...next, you: you ?? previous?.you ?? { seat: null, table: null, hands: [], balance: 0 } };
+    viewRef.current = merged;
+    setView(merged);
   }, []);
   const refresh = useCallback(
     () =>
@@ -123,9 +143,27 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   const betters = view?.seats.filter((seat) => seat.bet !== null).length ?? 0;
   const secondsLeft = deadline && serverNow !== null ? Math.max(0, Math.ceil((Date.parse(deadline) - serverNow) / 1000)) : null;
   const balance = you?.balance ?? 0;
+  // While the dealer's cards turn, the balance stays where it was (the result is not out yet).
+  const shownBalance = reveal ? reveal.balance : balance;
 
-  // The last finished round this player had hands in: its result, shown while it is fresh.
+  // The last finished round this player had hands in: its result, shown while it is fresh (after the dealer's turn).
   const finished = round?.status === "done" ? round : (view?.last ?? null);
+  const revealing = !!reveal && reveal.id === finished?.id;
+  const revealTotal = revealing ? (finished?.dealer.length ?? 0) : 0;
+  useEffect(() => {
+    if (!reveal) return;
+    const pace = reveal.slow ? 1.5 : 1;
+    const delay = (reveal.step === 1 ? 900 : reveal.step < revealTotal ? 1000 : 900) * pace;
+    const id = window.setTimeout(() => {
+      if (reveal.step < revealTotal) {
+        play("flip");
+        setReveal({ ...reveal, step: reveal.step + 1 });
+      } else {
+        setReveal(null);
+      }
+    }, delay);
+    return () => window.clearTimeout(id);
+  }, [reveal, revealTotal]);
   const myFinished = finished ? finished.hands.filter(mine) : [];
   const outcome =
     finished && myFinished.length
@@ -135,12 +173,12 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
           return { id: finished.id, paid, net: paid - staked, dealer: finished.dealerTotal };
         })()
       : null;
-  const fresh = !!outcome && !!finished?.finishedAt && serverNow !== null && serverNow - Date.parse(finished.finishedAt) < 15_000;
-  const lastWin = outcome && outcome.net > 0 ? outcome.paid : null;
+  const fresh = !revealing && !!outcome && !!finished?.finishedAt && serverNow !== null && serverNow - Date.parse(finished.finishedAt) < 30_000;
+  const lastWin = !revealing && outcome && outcome.net > 0 ? outcome.paid : null;
   const burst = fresh && outcome && outcome.net > 0 && burstSeen !== outcome.id && !reduce ? outcome : null;
 
-  // Once per finished round: the page's balance and history catch up.
-  const outcomeId = outcome?.id ?? null;
+  // Once per finished round, after the dealer's turn: the page's balance and history catch up.
+  const outcomeId = revealing ? null : (outcome?.id ?? null);
   const onSettledRef = useRef(onSettled);
   useEffect(() => {
     onSettledRef.current = onSettled;
@@ -238,17 +276,6 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         ? { id: "paused", text: "Games are paused right now.", tone: "warn" }
         : null;
 
-  const actionButton = (label: string, key: string, onClick: () => void, enabledButton: boolean) => (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!enabledButton || busy}
-      className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-line-strong bg-white/[0.04] px-2 text-sm font-semibold text-text transition enabled:hover:border-gold/50 enabled:hover:text-gold-bright disabled:opacity-35 lg:min-h-12"
-    >
-      {label} <Kbd>{key}</Kbd>
-    </button>
-  );
-
   const panel = (
     <GamePanel
       prompt={prompt}
@@ -318,8 +345,8 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
       below={
         myTurn ? (
           <div className="grid grid-cols-2 gap-2">
-            {actionButton("Double", "D", () => move("double"), canDouble)}
-            {actionButton("Split", "P", () => move("split"), canSplitNow)}
+            <ActionButton label="Double" shortcut="D" onClick={() => move("double")} disabled={!canDouble || busy} />
+            <ActionButton label="Split" shortcut="P" onClick={() => move("split")} disabled={!canSplitNow || busy} />
           </div>
         ) : undefined
       }
@@ -331,14 +358,14 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         ) : undefined
       }
       lastWin={lastWin}
-      balance={balance}
+      balance={shownBalance}
       wallet={wallet}
     />
   );
 
   const rules = (
     <>
-      <span className="block">Up to seven players at a table, each against the dealer. A round starts 15 seconds after the second bet.</span>
+      <span className="block">Up to seven players at a table, each against the dealer. A round starts 10 seconds after the second bet.</span>
       <span className="mt-2 block">20 seconds per decision; when the time runs out, the hand stands. Double on any two cards, split once.</span>
       <span className="mt-2 block">The dealer draws to 17 and stands on every 17. Blackjack pays 3:2, a win 1:1, a push returns the bet.</span>
       <span className="mt-2 block text-xs text-faint">
@@ -355,7 +382,10 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   );
 
   const shown: BlackjackRound | null = round && (round.status !== "betting" || !view?.last) ? round : (view?.last ?? round);
-  const fading = round?.status === "betting" && shown !== round;
+  const fading = round?.status === "betting" && shown !== round && !revealing;
+  // While the dealer's turn plays back: the first cards up, the hole card down until its turn, later cards not yet drawn.
+  const dealerCards = shown && revealing && reveal ? shown.dealer.flatMap((card, index) => (index < reveal.step ? [card] : index === 1 ? [null] : [])) : (shown?.dealer ?? []);
+  const dealerTotal = revealing ? handTotal(dealerCards).total : (shown?.dealerTotal ?? 0);
 
   return (
     <GameFrame gameId="blackjack" payoutBps={game.payoutBps} onBack={onBack} info={rules} panel={panel} toast={toast}>
@@ -366,18 +396,19 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
         {/* The rim and the printed rules of the table. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-[4%] bottom-[-55%] top-[18%] hidden rounded-[50%] border border-gold/25 shadow-[inset_0_0_80px_rgba(0,0,0,0.5)] @[40rem]:block" />
 
-        <Dealer round={shown} faded={fading} />
+        <Dealer roundId={shown?.id ?? null} cards={dealerCards} total={dealerTotal} faded={fading} slow={revealing && !!reveal?.slow && reveal.step === 1} />
 
         <div className="relative z-10 flex min-h-12 flex-1 flex-col items-center justify-center gap-1 px-3 text-center">
           <p className="font-mono text-[0.58rem] uppercase tracking-[0.22em] text-gold/60 @[40rem]:text-[0.66rem]">Blackjack pays 3 to 2 · Dealer stands on 17</p>
-          <Banner round={round} betters={betters} secondsLeft={secondsLeft} turnName={turnHand?.name ?? null} myTurn={myTurn} fading={fading} />
+          <Banner round={round} betters={betters} secondsLeft={secondsLeft} turnName={turnHand?.name ?? null} myTurn={myTurn} fading={fading} dealer={revealing} />
         </div>
 
         <div className="relative z-10 grid shrink-0 grid-cols-4 gap-1 px-1.5 pb-2 @[40rem]:block @[40rem]:h-[52%] @[40rem]:px-0 @[40rem]:pb-0">
           {ARC.map((place, index) => {
             const number = index + 1;
             const seat = view?.seats.find((entry) => entry.seat === number) ?? null;
-            const hands = shown?.hands.filter((hand) => hand.seat === number) ?? [];
+            // Results stay hidden until the dealer's last card is up.
+            const hands = (shown?.hands.filter((hand) => hand.seat === number) ?? []).map((hand) => (revealing ? { ...hand, result: null } : hand));
             return (
               <Seat
                 key={number}
@@ -409,21 +440,38 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   );
 }
 
-/** The dealer's cards at the top of the table, the hole card face down while players decide. */
-function Dealer({ round, faded }: { round: BlackjackRound | null; faded: boolean }) {
-  const cards = round?.dealer ?? [];
+/** Double and split, under Hit and Stand. */
+function ActionButton({ label, shortcut, onClick, disabled }: { label: string; shortcut: string; onClick(): void; disabled: boolean }) {
   return (
-    <div className={`relative z-10 flex flex-col items-center gap-1 pt-3 transition-opacity @[40rem]:pt-5 ${faded ? "opacity-45" : ""}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-line-strong bg-white/[0.04] px-2 text-sm font-semibold text-text transition enabled:hover:border-gold/50 enabled:hover:text-gold-bright disabled:opacity-35 lg:min-h-12"
+    >
+      {label} <Kbd>{shortcut}</Kbd>
+    </button>
+  );
+}
+
+/** The dealer's cards at the top of the table, the hole card face down while players decide. */
+function Dealer({ roundId, cards, total, faded, slow }: { roundId: number | null; cards: (Card | null)[]; total: number; faded: boolean; slow: boolean }) {
+  return (
+    <div
+      data-dealer-up={cards.filter((card) => card !== null).length}
+      className={`relative z-10 flex flex-col items-center gap-1 pt-3 transition-opacity @[40rem]:pt-5 ${faded ? "opacity-45" : ""}`}
+    >
       <p className="flex items-center gap-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-gold/80">
         Dealer
-        {cards.length > 0 && <TotalPill total={round?.dealerTotal ?? 0} />}
+        {cards.length > 0 && <TotalPill total={total} />}
+        {slow && <span className="animate-pulse rounded-full bg-gold/20 px-1.5 text-[0.6rem] text-gold-bright">Blackjack?</span>}
       </p>
       <div className="flex h-[clamp(3.6rem,14cqw,7.7rem)] items-center">
         {cards.length === 0 ? (
           <span className="h-full w-[clamp(2.6rem,10cqw,5.5rem)] rounded-md border border-dashed border-gold/20" />
         ) : (
           cards.map((card, index) => (
-            <span key={`${round?.id}-${index}`} className={index > 0 ? "-ml-[clamp(1rem,3.5cqw,2rem)]" : ""}>
+            <span key={`${roundId}-${index}-${card === null ? "down" : "up"}`} className={index > 0 ? "-ml-[clamp(1rem,3.5cqw,2rem)]" : ""}>
               <PlayingCard card={card} size="dealer" />
             </span>
           ))
@@ -433,8 +481,26 @@ function Dealer({ round, faded }: { round: BlackjackRound | null; faded: boolean
   );
 }
 
-function Banner({ round, betters, secondsLeft, turnName, myTurn, fading }: { round: BlackjackRound | null; betters: number; secondsLeft: number | null; turnName: string | null; myTurn: boolean; fading: boolean }) {
-  const text = !round
+function Banner({
+  round,
+  betters,
+  secondsLeft,
+  turnName,
+  myTurn,
+  fading,
+  dealer,
+}: {
+  round: BlackjackRound | null;
+  betters: number;
+  secondsLeft: number | null;
+  turnName: string | null;
+  myTurn: boolean;
+  fading: boolean;
+  dealer: boolean;
+}) {
+  const text = dealer
+    ? "Dealer plays"
+    : !round
     ? "Opening the table…"
     : round.status === "playing"
       ? myTurn
