@@ -552,7 +552,7 @@ function MoodFace({ mood }: { mood: Mood }) {
 const FLOURISH = "M9 30 C9 16 16 9 30 9 M13 26 C13 18 18 13 26 13 M9 30 c3 0 5 -2 5 -5 c0 -2 -1.5 -3.4 -3.4 -3.4 M30 9 c0 3 -2 5 -5 5 c-2 0 -3.4 -1.5 -3.4 -3.4";
 
 /** The back of the deck: black with gold ornaments — a double frame, corner scrolls, a lattice and the 300 seal in a medallion. */
-function CardBack({ className = "" }: { className?: string }) {
+export function CardBack({ className = "" }: { className?: string }) {
   const id = useId().replace(/:/g, "");
   return (
     <span className={`block overflow-hidden rounded-md bg-[radial-gradient(circle_at_50%_45%,#2a2210,#0b0b0c_70%)] ${className}`}>

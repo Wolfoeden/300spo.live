@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions";
 import { DatabaseConfigError } from "../../lib/server/db";
 import { gameDb, gameErrorCode } from "../../lib/server/game-db";
 import { checkDepositTx } from "../../lib/server/game-scan";
+import { tableName } from "../../lib/server/handles";
 import { claimWelcome } from "../../lib/server/welcome";
 import { json, readSession } from "./_shared/wallet-auth";
 
@@ -26,6 +27,12 @@ const handle = async (request: Request, action: string, wallet: string) => {
   if (action === "state" && request.method === "GET") return json({ wallet, ...(await gameDb.state(wallet)) });
   if (action === "fairness" && request.method === "GET") return json(await gameDb.fairness(wallet));
   if (action === "chicken" && request.method === "GET") return json(await gameDb.chickenState(wallet));
+  // Blackjack: looking at a table also keeps the seat and moves the table past due deadlines.
+  if (action === "blackjack" && request.method === "GET") {
+    const table = Number(new URL(request.url).searchParams.get("table") ?? 1);
+    if (!Number.isInteger(table) || table < 1 || table > 99) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.bjEnter(table, wallet));
+  }
   if (action === "race" && request.method === "GET") {
     // With ?count the deals come as a list (the race table); without it, the single preview of older clients.
     const param = new URL(request.url).searchParams.get("count");
@@ -111,6 +118,28 @@ const handle = async (request: Request, action: string, wallet: string) => {
       /^[0-9a-f]{64}$/.test(serverSeedHash);
     if (!valid) return json({ error: "invalid_request" }, 400);
     return json(await gameDb.playRaceStakes(wallet, stakes.map(BigInt), nonce, serverSeedHash));
+  }
+
+  if (action.startsWith("blackjack-")) {
+    const table = Number(body.table);
+    if (!Number.isInteger(table) || table < 1 || table > 99) return json({ error: "invalid_request" }, 400);
+    if (action === "blackjack-sit") {
+      const seat = Number(body.seat);
+      if (!Number.isInteger(seat) || seat < 1 || seat > 7) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.bjSit(table, seat, wallet, await tableName(wallet)));
+    }
+    if (action === "blackjack-leave") return json(await gameDb.bjLeave(table, wallet));
+    if (action === "blackjack-bet") {
+      const bet = body.bet === null ? null : /^\d{1,12}$/.test(String(body.bet)) ? BigInt(String(body.bet)) : undefined;
+      if (bet === undefined) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.bjBet(table, wallet, bet));
+    }
+    if (action === "blackjack-act") {
+      const move = String(body.move ?? "");
+      if (!["hit", "stand", "double", "split"].includes(move)) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.bjAct(table, wallet, move));
+    }
+    return json({ error: "not_found" }, 404);
   }
 
   if (action === "chicken-start") {

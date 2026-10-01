@@ -1,6 +1,6 @@
 "use client";
 
-import { aceArt } from "@/lib/game/card-art";
+import { aceArt, cardArt } from "@/lib/game/card-art";
 import { SUIT_COLORS } from "@/lib/game/card-race";
 import { LOBBY_LIVE, LOBBY_SOON, type LobbyTile } from "@/lib/game/catalog";
 import { RobotFace } from "./arena";
@@ -45,7 +45,7 @@ function Tile({ tile, onOpen, large, small, tag }: { tile: LobbyTile; onOpen?(sl
     <>
       <div
         className={`relative overflow-hidden bg-[radial-gradient(circle_at_50%_35%,#2a2211,#0b0b0c_70%)] ${
-          large ? "aspect-[16/10] sm:aspect-[16/9]" : small ? "aspect-[4/3]" : "aspect-[16/9]"
+          large ? "aspect-[16/10] sm:aspect-[16/9] lg:aspect-auto lg:min-h-0 lg:flex-1" : small ? "aspect-[4/3]" : "aspect-[16/9] lg:aspect-[16/7]"
         }`}
       >
         <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-40" />
@@ -82,7 +82,8 @@ function Tile({ tile, onOpen, large, small, tag }: { tile: LobbyTile; onOpen?(sl
       </div>
     </>
   );
-  const frame = `group relative block overflow-hidden rounded-3xl border bg-night text-left transition ${
+  // A flex column: a button centres its content, and the featured tile is as tall as the column of the others.
+  const frame = `group relative flex flex-col overflow-hidden rounded-3xl border bg-night text-left transition ${
     live ? "border-line hover:-translate-y-0.5 hover:border-gold/40 hover:shadow-[0_24px_60px_-30px_rgba(233,180,76,0.5)]" : "border-line/70"
   }`;
   return live ? (
@@ -106,6 +107,8 @@ function Art({ slug }: { slug: string }) {
       return <DuelArt />;
     case "chicken":
       return <ChickenArt />;
+    case "blackjack":
+      return <BlackjackArt />;
     case "dice":
       return <DiceArt />;
     case "sparta-board":
@@ -121,7 +124,7 @@ function Art({ slug }: { slug: string }) {
 function AcesArt() {
   return (
     <div className="absolute inset-0 grid place-items-center">
-      <div className="relative h-[62%] w-[70%]">
+      <div className="relative h-[62%] max-h-[24rem] w-[70%] max-w-[30rem]">
         {[0, 1, 2, 3].map((suit) => {
           const art = aceArt(suit);
           const offset = suit - 1.5;
@@ -141,6 +144,30 @@ function AcesArt() {
             </span>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** Ace and king: twenty-one, on the table's green. */
+function BlackjackArt() {
+  const cards = [aceArt(0), cardArt(1, "K")];
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_50%_20%,rgba(18,55,38,0.9),transparent_70%)]">
+      <div className="relative h-[60%] w-[60%]">
+        {cards.map((art, index) => (
+          <span
+            key={art.src}
+            className="absolute bottom-0 left-1/2 aspect-[5/7] h-full overflow-hidden rounded-xl border-2 border-gold-bright shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)] transition duration-500 group-hover:translate-y-[-4%]"
+            style={{ transform: `translateX(calc(-50% + ${(index - 0.5) * 42}%)) rotate(${(index - 0.5) * 14}deg)`, transformOrigin: "50% 120%", outline: `2px solid ${SUIT_COLORS[index]}`, outlineOffset: "2px" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={art.src} alt={art.alt} className="size-full object-cover object-top" />
+          </span>
+        ))}
+        <span className="absolute -right-[6%] top-[-8%] grid size-[30%] min-w-10 place-items-center rounded-full bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] text-lg font-black text-[#1a1204] shadow-xl ring-2 ring-black/30 sm:text-2xl">
+          21
+        </span>
       </div>
     </div>
   );

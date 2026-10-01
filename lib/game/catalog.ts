@@ -2,7 +2,7 @@
 // index i here is outcome i in game.play() / game.play_race().
 import { SUITS } from "./card-race";
 
-export type GameId = "coin-flip" | "card-race" | "chicken" | "horse-race" | "xerxes-vs-robot";
+export type GameId = "coin-flip" | "card-race" | "chicken" | "blackjack" | "horse-race" | "xerxes-vs-robot";
 
 /** Retired games: kept for labels in old rounds, never offered again. */
 const RETIRED = new Set<string>(["horse-race"]);
@@ -27,6 +27,11 @@ export const GAME_COPY: Record<GameId, { title: string; tagline: string; choices
     tagline: "Walk the blue cock across the road, lane by lane. Every lane raises the multiplier — collect before a car gets him.",
     choices: [],
   },
+  blackjack: {
+    title: "Blackjack",
+    tagline: "Up to seven players at a table, each against the dealer. Blackjack pays 3:2.",
+    choices: [],
+  },
   "horse-race": { title: "Horse race (classic)", tagline: "Five horses, one winner. Pick it.", choices: HORSES.map((horse) => horse.name) },
   "xerxes-vs-robot": { title: "Xerxes vs AI robot", tagline: "The god-king against the machine. Who stands?", choices: ["Xerxes", "AI robot"] },
 };
@@ -38,6 +43,7 @@ export type LobbyTile = { slug: string; title: string; tagline: string; badge: s
 
 export const LOBBY_LIVE: LobbyTile[] = [
   { slug: "horse-race", game: "card-race", title: "Horse race", tagline: "Four legendary aces race the deck. Play one race or four at once.", badge: "Up to 100×" },
+  { slug: "blackjack", game: "blackjack", title: "Blackjack", tagline: "Up to seven players, one dealer. A round starts when two have bet.", badge: "Multiplayer" },
   { slug: "chicken", game: "chicken", title: "Chicken", tagline: "Cross the road lane by lane and collect before a car hits.", badge: "Up to 53,130×" },
   { slug: "coin-flip", game: "coin-flip", title: "Coin flip", tagline: "Xerxes or 300 — call the side.", badge: "2×" },
 ];

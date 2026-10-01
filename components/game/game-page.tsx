@@ -15,6 +15,8 @@ import { useDelegation } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
+import type { BlackjackState } from "@/lib/game/blackjack";
+import { BlackjackTable } from "./blackjack-table";
 import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-game";
 import { Lobby } from "./lobby";
 import { RaceTable, type RaceDeals, type StakedRaces } from "./race-table";
@@ -70,6 +72,11 @@ const API_ERRORS: Record<string, string> = {
   race_changed: "The race was dealt again (another bet or a new seed). Check the new track and odds, then bet.",
   round_open: "A Chicken round is still running. Finish it first — until then the seed cannot be revealed.",
   round_not_open: "This round is already over.",
+  table_not_found: "That table does not exist (yet).",
+  seat_taken: "Someone just took that seat. Pick another one.",
+  not_seated: "Take a seat first.",
+  round_running: "The cards are already out. Bet for the next round when this one ends.",
+  not_your_turn: "It is not your turn.",
   too_many_open_deposits: "Too many unfinished deposits. Let the pending ones confirm first.",
   not_configured: "The game is not configured yet.",
   not_signed_in: "Your wallet session expired. Verify your wallet again.",
@@ -80,6 +87,11 @@ const rotateSeed = (clientSeed: string | null) => api<Fairness>("/api/game/seed"
 const loadRaces = (count: number) => api<RaceDeals>(`/api/game/race?count=${count}`);
 const placeBet = (game: string, bet: number, choice: number) => api<PlayResult>("/api/game/play", { game, bet: String(bet), choice });
 const placeStakes = (stakes: number[], ticket: RaceTicket) => api<StakedRaces>("/api/game/play-stakes", { stakes: stakes.map(String), ...ticket });
+const loadBlackjack = (table: number) => api<BlackjackState>(`/api/game/blackjack?table=${table}`);
+const sitBlackjack = (table: number, seat: number) => api<BlackjackState>("/api/game/blackjack-sit", { table, seat });
+const leaveBlackjack = (table: number) => api<BlackjackState>("/api/game/blackjack-leave", { table });
+const betBlackjack = (table: number, amount: number | null) => api<BlackjackState>("/api/game/blackjack-bet", { table, bet: amount === null ? null : String(amount) });
+const actBlackjack = (table: number, move: "hit" | "stand" | "double" | "split") => api<BlackjackState>("/api/game/blackjack-act", { table, move });
 const loadChicken = () => api<ChickenState>("/api/game/chicken");
 const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
 const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
@@ -334,6 +346,21 @@ export function GamePage() {
             </div>
           ) : !game?.enabled || !common ? (
             <Gate icon={<Shield className="text-warning" />} title={`${tile.title} is paused`} text="This game is switched off right now. Try another one." />
+          ) : tile.game === "blackjack" ? (
+            <BlackjackTable
+              key="blackjack"
+              game={game}
+              bets={common.bets}
+              enabled={common.enabled}
+              onSettled={common.onSettled}
+              onBack={common.onBack}
+              wallet={common.wallet}
+              load={loadBlackjack}
+              sit={sitBlackjack}
+              leave={leaveBlackjack}
+              bet={betBlackjack}
+              act={actBlackjack}
+            />
           ) : tile.game === "chicken" ? (
             <ChickenGame
               key="chicken"
