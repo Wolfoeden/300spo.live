@@ -56,8 +56,10 @@ const CORNER = ["left-0.5 top-0.5", "right-0.5 top-0.5", "bottom-0.5 left-0.5", 
 /**
  * The horse race: one race or four. The player taps lanes to put the chip from
  * the terminal on them (any lanes, up to the max bet each), or places chips by
- * colour or odds on every race at once. The chips stay for the next deal, so
- * Start or auto play bets the same layout again.
+ * colour or odds on every race at once. The chips stay for the next deal: after
+ * a round the button first shows that deal and its odds, and only then starts
+ * it, so nothing is bet on odds nobody has seen. Auto play bets the same layout
+ * on every deal by itself.
  */
 export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRaces, playStakes, dealVersion, onSettled, onBack, wallet }: Props) {
   const reduce = useReducedMotion();
@@ -82,6 +84,8 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const [pace, setPace] = useState<RacePace>(readPace);
   const [roundPace, setRoundPace] = useState<RacePace>("auto");
   const [advance, setAdvance] = useState(0);
+  // Just after the next deal is shown: a second tap of a double tap must not start it yet.
+  const [settling, setSettling] = useState(false);
   // After four races: their wins counted up to one sum.
   const [tally, setTally] = useState<{ id: string; wins: number[] } | null>(null);
   // Races that have reached their finish this round, and the wins already celebrated.
@@ -142,7 +146,10 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   const stakes = deals ? layoutStakes(placements, deals.deals.map((deal) => deal.odds), bets.max) : Array.from({ length: count }, () => [0, 0, 0, 0]);
   const total = sum(stakes.flat());
   const racesStaked = stakes.filter((lanes) => sum(lanes) > 0).length;
-  const canStart = enabled && !busy && fresh && total > 0 && total <= available;
+  const ready = enabled && !busy && fresh && total > 0 && total <= available;
+  // A finished round stays on screen; starting needs the next deal on screen first.
+  const between = phase === "done";
+  const canStart = ready && !between && !settling;
   const showResult = phase === "animating" || phase === "done";
   const shownBalance = busy ? balance - total : available;
   const played = outcome?.results.filter((race): race is StakedRace => !!race) ?? [];
@@ -179,6 +186,17 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     place({ kind: "lane", board, suit, amount: chip });
   };
   const placeRule = (strategy: RaceStrategy) => place({ kind: "rule", strategy, amount: chip });
+  const showNext = () => {
+    if (!between) return;
+    reopen();
+    play("click");
+    setSettling(true);
+  };
+  useEffect(() => {
+    if (!settling) return;
+    const id = window.setTimeout(() => setSettling(false), 650);
+    return () => window.clearTimeout(id);
+  }, [settling]);
   const undo = () => {
     if (busy || !placements.length) return;
     reopen();
@@ -193,7 +211,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   };
 
   const start = async (fromAuto = false) => {
-    if (!deals || !canStart) return;
+    if (!deals || !(fromAuto ? ready : canStart)) return;
     setPlayedNonce(deals.nonce);
     setError(null);
     setNote(null);
@@ -229,6 +247,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
   useStopWhenHidden(auto, stopAuto);
   const canAuto = enabled && placements.length > 0;
   useAutoRun(auto, enabled && !busy && fresh, () => {
+    // Auto play is the one way to bet the same chips on a deal without looking at it first.
     const reason = !placements.length ? "place chips first" : total === 0 ? "no ace fits these chips" : total > available ? "not enough game balance" : null;
     if (reason) {
       setAuto("off");
@@ -268,8 +287,8 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
     down: () => changeChip(-1),
     plus: () => changeChip(1),
     minus: () => changeChip(-1),
-    enter: () => (stepping ? turnCard() : canStart && void start()),
-    space: () => (stepping ? turnCard() : canStart && void start()),
+    enter: () => (stepping ? turnCard() : between ? showNext() : canStart && void start()),
+    space: () => (stepping ? turnCard() : between ? showNext() : canStart && void start()),
     s: canSkip && skip,
     a: () => (auto !== "off" ? changeAuto("off") : canAuto && changeAuto("lock")),
     ...Object.fromEntries(STRATEGIES.map((entry) => [entry.key, () => placeRule(entry.id)])),
@@ -282,6 +301,11 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
       "Tap the board or the button to turn the next card"
     ) : busy ? (
       "Racing…"
+    ) : between ? (
+      <>
+        <span className="pointer-fine:hidden">Tap for the next {quad ? "races and their" : "race and its"} odds</span>
+        <span className="hidden pointer-fine:inline">Enter shows the next {quad ? "races and their" : "race and its"} odds</span>
+      </>
     ) : total === 0 ? (
       quad ? "Tap lanes in any race to place the chip" : "Tap a lane to place the chip"
     ) : total > available ? (
@@ -319,7 +343,11 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
       play={{
         label: stepping
           ? "Next card"
-          : total === 0
+          : between
+            ? quad
+              ? "Next races · new odds"
+              : "Next race · new odds"
+            : total === 0
             ? "Place chips"
             : total > available
               ? "Not enough balance"
@@ -327,11 +355,11 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
                 ? `Start ${racesStaked} race${racesStaked === 1 ? "" : "s"}`
                 : "Start race",
         amount: total,
-        onPlay: () => (stepping ? turnCard() : void start()),
-        playable: stepping || canStart || (canAuto && !busy),
+        onPlay: () => (stepping ? turnCard() : between ? showNext() : void start()),
+        playable: stepping || between || canStart || (canAuto && !busy),
         auto,
         onAuto: changeAuto,
-        kbd: canStart ? <Kbd>Enter</Kbd> : null,
+        kbd: canStart || between ? <Kbd>Enter</Kbd> : null,
       }}
       lead={
         canReplay ? (
@@ -349,10 +377,11 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
         ) : undefined
       }
       below={
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 lg:flex-col lg:items-stretch lg:gap-3">
           <RaceModes quad={quad} onQuad={(value) => onCount(value ? 4 : 1)} pace={pace} onPace={changePace} disabled={busy} />
+          <div className="contents lg:flex lg:items-center lg:gap-2">
           <ChipStepper chip={chip} bets={bets} onStep={changeChip} disabled={busy} affordable={chip <= available} />
-          <div className="ml-auto flex gap-1">
+          <div className="ml-auto flex gap-1 lg:gap-1.5">
             <IconButton label="Undo the last chip" onClick={undo} disabled={busy || !placements.length}>
               <path d="M9 14 4 9l5-5" />
               <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
@@ -360,6 +389,7 @@ export function RaceTable({ game, bets, balance, enabled, count, onCount, loadRa
             <IconButton label="Clear all chips" onClick={clear} disabled={busy || !placements.length}>
               <path d="M18 6 6 18M6 6l12 12" />
             </IconButton>
+          </div>
           </div>
         </div>
       }
@@ -503,15 +533,16 @@ function RaceModes({
   onPace(pace: RacePace): void;
   disabled: boolean;
 }) {
-  const options: { id: RacePace; label: string; icon: React.ReactNode }[] = [
-    { id: "step", label: "Step: turn every card yourself", icon: <path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9L4.5 16a1.6 1.6 0 0 1 2.4-2.1L9 16" /> },
-    { id: "auto", label: "Auto", icon: <path d="M8 5.5v13l11-6.5z" /> },
-    { id: "fast", label: "Fast: short races, no long win animations", icon: <path d="M4 6v12l8-6zM12 6v12l8-6z" /> },
+  const options: { id: RacePace; label: string; short: string; icon: React.ReactNode }[] = [
+    { id: "step", label: "Step: turn every card yourself", short: "Step", icon: <path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9L4.5 16a1.6 1.6 0 0 1 2.4-2.1L9 16" /> },
+    { id: "auto", label: "Auto", short: "Auto", icon: <path d="M8 5.5v13l11-6.5z" /> },
+    { id: "fast", label: "Fast: short races, no long win animations", short: "Fast", icon: <path d="M4 6v12l8-6zM12 6v12l8-6z" /> },
   ];
-  const segment = (on: boolean) => `grid h-7 place-items-center rounded-full transition disabled:opacity-50 ${on ? "bg-gold/20 text-gold-bright" : "text-muted hover:text-text"}`;
+  const segment = (on: boolean) =>
+    `flex h-7 items-center justify-center gap-1.5 rounded-full transition disabled:opacity-50 lg:h-9 lg:flex-1 ${on ? "bg-gold/20 text-gold-bright" : "text-muted hover:text-text"}`;
   return (
-    <div className="flex items-center rounded-full border border-line bg-ink/60 p-0.5">
-      <div role="radiogroup" aria-label="Races at once" className="flex">
+    <div className="flex items-center rounded-full border border-line bg-ink/60 p-0.5 lg:p-1">
+      <div role="radiogroup" aria-label="Races at once" className="flex lg:flex-[2]">
         {[false, true].map((value) => (
           <button
             key={String(value)}
@@ -520,14 +551,14 @@ function RaceModes({
             aria-checked={quad === value}
             disabled={disabled}
             onClick={() => onQuad(value)}
-            className={`${segment(quad === value)} px-2 text-xs font-semibold`}
+            className={`${segment(quad === value)} px-2 text-xs font-semibold lg:text-sm`}
           >
             {value ? "4×" : "1×"}
           </button>
         ))}
       </div>
-      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-line" />
-      <div role="radiogroup" aria-label="Race pace" className="flex">
+      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-line lg:mx-1 lg:h-5" />
+      <div role="radiogroup" aria-label="Race pace" className="flex lg:flex-[3]">
       {options.map((option) => (
         <button
           key={option.id}
@@ -538,11 +569,12 @@ function RaceModes({
           title={option.label}
           disabled={disabled}
           onClick={() => onPace(option.id)}
-          className={`${segment(pace === option.id)} w-7`}
+          className={`${segment(pace === option.id)} w-7 lg:w-auto lg:px-2 lg:text-xs lg:font-semibold`}
         >
           <svg viewBox="0 0 24 24" className="size-4" fill={option.id === "step" ? "none" : "currentColor"} stroke={option.id === "step" ? "currentColor" : "none"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             {option.icon}
           </svg>
+          <span className="hidden lg:inline">{option.short}</span>
         </button>
       ))}
       </div>
@@ -631,14 +663,15 @@ function ChipStepper({
   disabled: boolean;
   affordable: boolean;
 }) {
-  const button = "grid size-7 place-items-center rounded-lg border border-line bg-white/[0.03] text-lg leading-none transition enabled:active:scale-95 disabled:opacity-30";
+  const button =
+    "grid size-7 place-items-center rounded-lg border border-line bg-white/[0.03] text-lg leading-none transition enabled:hover:border-gold/40 enabled:active:scale-95 disabled:opacity-30 lg:size-10 lg:rounded-xl lg:text-xl";
   return (
     <div className="flex items-center gap-1" role="group" aria-label="Chip">
       <button type="button" aria-label="Smaller chip" className={button} onClick={() => onStep(-1)} disabled={disabled || chip <= bets.min}>
         −
       </button>
       <span
-        className={`grid h-7 min-w-11 place-items-center rounded-full border-2 border-dashed border-[#1a1204]/40 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] px-2 text-xs font-bold tabular-nums text-[#1a1204] shadow-md ${
+        className={`grid h-7 min-w-11 place-items-center rounded-full border-2 border-dashed lg:h-10 lg:min-w-20 lg:text-sm border-[#1a1204]/40 bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] px-2 text-xs font-bold tabular-nums text-[#1a1204] shadow-md ${
           affordable ? "" : "opacity-50"
         }`}
         aria-live="polite"
@@ -660,9 +693,9 @@ function IconButton({ label, onClick, disabled, children }: { label: string; onC
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid size-7 place-items-center rounded-lg border border-line text-muted transition hover:border-gold/40 hover:text-text disabled:opacity-30"
+      className="grid size-7 place-items-center rounded-lg border border-line text-muted transition hover:border-gold/40 hover:text-text disabled:opacity-30 lg:size-10 lg:rounded-xl"
     >
-      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="size-4 lg:size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {children}
       </svg>
     </button>

@@ -107,11 +107,13 @@ export type Fairness = {
   revealed: { serverSeed: string; serverSeedHash: string; clientSeed: string; lastNonce: number; revealedAt: string }[];
 };
 
-/** What each player has lost (stakes minus winnings), counted up to `asOf` (the start of the UTC day). */
+/** What each player has lost (every stake that did not come back), counted up to `asOf` (the start of the UTC day). */
 export type LossBoard = {
   asOf: string;
   nextAt: string;
   revealAt: string | null;
+  /** Every stake lost so far, live. */
+  jackpot: number;
   total: number;
   players: number;
   rows: { wallet: string; lost: number; rounds: number }[];

@@ -71,7 +71,7 @@ export function GameFrame({
   return (
     <section
       data-game-shell
-      className="relative -mx-4 h-[calc(100svh-3.75rem-var(--dock,11rem))] min-h-[22rem] -scroll-mt-7 snap-start overflow-hidden bg-night/70 sm:-mx-6 lg:mx-0 lg:grid lg:h-[clamp(34rem,calc(100svh-4.25rem),52rem)] lg:grid-cols-[19rem_minmax(0,1fr)] lg:rounded-3xl lg:border lg:border-line"
+      className="relative -mx-4 h-[calc(100svh-3.75rem-var(--dock,11rem))] min-h-[22rem] -scroll-mt-7 snap-start overflow-hidden bg-night/70 sm:-mx-6 lg:mx-0 lg:grid lg:h-[clamp(34rem,calc(100svh-4.25rem),52rem)] lg:grid-cols-[22rem_minmax(0,1fr)] xl:grid-cols-[25rem_minmax(0,1fr)] lg:rounded-3xl lg:border lg:border-line"
       onPointerUp={(event) => {
         // A click with mouse or finger leaves focus on the button, which would swallow Enter and Space.
         if (event.target instanceof Element && event.target.closest("button")) window.setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());

@@ -11,7 +11,8 @@ import { BetStepper, Kbd, stepBet, type Bets } from "./game-frame";
 
 /** Auto play: off, running while the play button is held, or locked on until stopped. */
 export type AutoMode = "off" | "hold" | "lock";
-export type WalletPanels = { deposit: React.ReactNode; rewards: React.ReactNode };
+/** The account parts of the terminal: the wallet tabs, and the recent bets shown in its free room on desktops. */
+export type WalletPanels = { deposit: React.ReactNode; rewards: React.ReactNode; history?: React.ReactNode };
 type WalletTab = "deposit" | "withdraw" | "rewards";
 
 /** Other parts of the page open a wallet tab with this event (detail: the tab). */
@@ -239,7 +240,7 @@ export function GamePanel({
           </div>
         )}
         {extra}
-        <div className="hidden lg:block lg:flex-1" />
+        <div className="hidden lg:flex lg:flex-1 lg:flex-col">{wallet.history}</div>
         <div className="flex items-center gap-3 whitespace-nowrap text-[0.7rem] lg:flex-col lg:text-xs lg:items-stretch lg:gap-3 lg:border-t lg:border-line lg:pt-4">
           <p className="flex items-baseline gap-1.5 lg:justify-between">
             <span className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-faint">Balance</span>
