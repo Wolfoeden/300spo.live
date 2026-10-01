@@ -9,7 +9,7 @@ describe("strategyPick", () => {
     expect(strategyPick("blue", deal)).toBe(0);
     expect(strategyPick("red", deal)).toBe(1);
     expect(strategyPick("yellow", deal)).toBe(2);
-    expect(strategyPick("green", deal)).toBe(3);
+    expect(strategyPick("black", deal)).toBe(3);
     expect(strategyPick("blue", [0, 22100, 243400, 90800])).toBeNull();
   });
 

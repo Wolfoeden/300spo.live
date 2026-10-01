@@ -7,10 +7,10 @@ import { loadProtocolParams, transactionErrorMessage, type TxStage } from "@/lib
 import { formatAdaExact, formatTokenAmount } from "@/lib/format";
 import { GAME_COPY, LOBBY_LIVE, isKnownGame } from "@/lib/game/catalog";
 import { depositMetadata, ownsTreasury } from "@/lib/game/treasury";
-import { LINKS, TOKEN_300 } from "@/lib/site";
-import { RewardsPanel } from "../drip/drip-card";
-import { ArrowRight, ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
+import { TOKEN_300 } from "@/lib/site";
+import { ArrowUpRight, Check, Close, Shield, Spinner, WalletIcon } from "../icons";
 import { InfoBubble } from "../info-bubble";
+import { RewardsSummary } from "../rewards/rewards-page";
 import { useDelegation } from "../wallet/delegation";
 import { useWallet } from "../wallet/wallet-provider";
 import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena";
@@ -235,17 +235,8 @@ export function GamePage() {
   const game = state && tile?.game ? state.games.find((entry) => entry.id === tile.game) : undefined;
   const walletPanels = state && {
     deposit: <DepositPanel state={state} walletTokens={balance?.token300 ?? null} onDeposited={refresh} />,
-    rewards: (
-      <>
-        <RewardsPanel />
-        <a
-          href={LINKS.rewards}
-          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/[0.06] px-4 py-3 text-sm font-semibold text-gold-bright transition hover:border-gold/60"
-        >
-          Rewards page: countdown and loss board <ArrowRight size={14} />
-        </a>
-      </>
-    ),
+    history: <TerminalHistory rounds={state.rounds.filter((round) => round.game === tile?.game)} />,
+    rewards: <RewardsSummary />,
   };
   const common = state &&
     walletPanels && {
@@ -739,6 +730,31 @@ function History({ state }: { state: GameState }) {
         </ul>
       </div>
     </section>
+  );
+}
+
+/** The running game's recent bets, in the terminal's free room on desktops. */
+function TerminalHistory({ rounds }: { rounds: GameState["rounds"] }) {
+  if (!rounds.length) return null;
+  return (
+    <div className="flex min-h-28 flex-1 flex-col rounded-2xl border border-line bg-ink/40">
+      <p className="flex items-center justify-between px-3.5 pt-3 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-faint">
+        Recent bets
+        <a href="#account" className="font-sans text-xs normal-case tracking-normal hover:text-text">
+          All ↓
+        </a>
+      </p>
+      <ul className="mt-1 min-h-0 flex-1 divide-y divide-line overflow-y-auto px-3.5 pb-1 text-xs">
+        {rounds.map((round) => (
+          <li key={round.id} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 truncate text-muted">{roundSummary(round)}</span>
+            <span className={`shrink-0 font-semibold tabular-nums ${round.payout > 0 ? "text-positive" : "text-faint"}`}>
+              {round.payout > 0 ? `+${formatTokenAmount(BigInt(round.payout - round.bet))}` : `−${formatTokenAmount(BigInt(round.bet))}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

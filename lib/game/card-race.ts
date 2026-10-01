@@ -19,9 +19,9 @@ export const cardSuit = (card: number) => Math.floor(card / 12);
 export const cardRank = (card: number) => RANKS[card % 12];
 /**
  * Four-colour deck, matching the card backgrounds in public/cards:
- * ♠ navy, ♥ red, ♦ gold, ♣ green. Text tones for dark surfaces.
+ * ♠ navy, ♥ red, ♦ gold, ♣ grey-black. Text tones for dark surfaces.
  */
-export const SUIT_COLORS = ["#8fb1ff", "#ff6b6b", "#f5c451", "#4fd08a"] as const;
+export const SUIT_COLORS = ["#8fb1ff", "#ff6b6b", "#f5c451", "#b4bac6"] as const;
 
 /**
  * Fisher–Yates shuffle of the 48 cards. Random numbers are big-endian 32-bit

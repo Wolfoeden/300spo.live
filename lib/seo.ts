@@ -76,11 +76,11 @@ export const PAGES = {
   },
   rewards: {
     path: "/rewards/",
-    title: "300 Rewards · Countdown, Loss Board, ADA · NIGHT · REALFI",
+    title: "300 Rewards · Jackpot, Countdown, ADA · NIGHT · REALFI",
     description:
-      "Something is behind the curtain: a two-week countdown, a public board of every stake lost in 300 Games, and rewards in ADA, NIGHT, REALFI and 300.",
+      "The 300 Games jackpot: every stake lost so far, a two-week countdown to the curtain, a public loss board and rewards in ADA, NIGHT, REALFI and 300.",
     image: "/og/rewards.jpg",
-    imageAlt: "Something is behind the curtain – 300 Rewards countdown",
+    imageAlt: "The jackpot is behind the curtain – 300 Rewards countdown",
     keywords: [
       "Cardano rewards",
       "ADA rewards",
@@ -89,6 +89,7 @@ export const PAGES = {
       "REALFI token",
       "stake pool rewards",
       "Cardano gamification",
+      "jackpot",
       "leaderboard",
       ...BRAND,
     ],

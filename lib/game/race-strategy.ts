@@ -1,18 +1,18 @@
 /** A standing pick for the horse race: one colour, or a band of the odds, chosen again on every deal. */
-export type RaceStrategy = "blue" | "red" | "yellow" | "green" | "low" | "mid" | "high";
+export type RaceStrategy = "blue" | "red" | "yellow" | "black" | "low" | "mid" | "high";
 
 export const STRATEGIES: { id: RaceStrategy; label: string; key: string; name: string }[] = [
   { id: "blue", label: "Blue", key: "b", name: "Always the blue ace" },
   { id: "red", label: "Red", key: "r", name: "Always the red ace" },
   { id: "yellow", label: "Yellow", key: "y", name: "Always the yellow ace" },
-  { id: "green", label: "Green", key: "g", name: "Always the green ace" },
+  { id: "black", label: "Black", key: "k", name: "Always the black ace" },
   { id: "low", label: "Low", key: "l", name: "Always the lowest odds" },
   { id: "mid", label: "Mid", key: "m", name: "Always middle odds" },
   { id: "high", label: "High", key: "h", name: "Always the highest odds" },
 ];
 
-/** The suit a colour strategy stands for: blue ♠, red ♥, yellow ♦, green ♣. */
-export const STRATEGY_SUIT: Partial<Record<RaceStrategy, number>> = { blue: 0, red: 1, yellow: 2, green: 3 };
+/** The suit a colour strategy stands for: blue ♠, red ♥, yellow ♦, black ♣. */
+export const STRATEGY_SUIT: Partial<Record<RaceStrategy, number>> = { blue: 0, red: 1, yellow: 2, black: 3 };
 
 /** The ace the strategy takes on a deal, or null when it has none that can win. */
 export function strategyPick(strategy: RaceStrategy, odds: readonly number[] | null | undefined): number | null {

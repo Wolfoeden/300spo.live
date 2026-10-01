@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DECK_SIZE,
   FINISH,
@@ -548,11 +548,46 @@ function MoodFace({ mood }: { mood: Mood }) {
   );
 }
 
+/** A corner scroll of the card back, drawn for the top left and mirrored into the other corners. */
+const FLOURISH = "M9 30 C9 16 16 9 30 9 M13 26 C13 18 18 13 26 13 M9 30 c3 0 5 -2 5 -5 c0 -2 -1.5 -3.4 -3.4 -3.4 M30 9 c0 3 -2 5 -5 5 c-2 0 -3.4 -1.5 -3.4 -3.4";
+
+/** The back of the deck: black with gold ornaments — a double frame, corner scrolls, a lattice and the 300 seal in a medallion. */
 function CardBack({ className = "" }: { className?: string }) {
+  const id = useId().replace(/:/g, "");
   return (
-    <span className={`grid place-items-center overflow-hidden rounded-md border border-gold/50 bg-[radial-gradient(circle_at_50%_40%,#2a2210,#0b0b0c)] ${className}`}>
+    <span className={`block overflow-hidden rounded-md bg-[radial-gradient(circle_at_50%_45%,#2a2210,#0b0b0c_70%)] ${className}`}>
+      <svg viewBox="0 0 100 140" preserveAspectRatio="none" className="absolute inset-0 size-full" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${id}-gold`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffe7a8" />
+            <stop offset="0.45" stopColor="#e9b44c" />
+            <stop offset="1" stopColor="#a8691c" />
+          </linearGradient>
+          <pattern id={`${id}-lattice`} width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M5 0 L10 5 L5 10 L0 5 Z" fill="none" stroke="#e9b44c" strokeWidth="0.5" opacity="0.28" />
+            <circle cx="5" cy="5" r="0.7" fill="#e9b44c" opacity="0.35" />
+          </pattern>
+        </defs>
+        <rect x="9" y="9" width="82" height="122" rx="3" fill={`url(#${id}-lattice)`} />
+        <rect x="3.5" y="3.5" width="93" height="133" rx="7" fill="none" stroke={`url(#${id}-gold)`} strokeWidth="2" />
+        <rect x="7.5" y="7.5" width="85" height="125" rx="4" fill="none" stroke={`url(#${id}-gold)`} strokeWidth="0.8" />
+        <g fill="none" stroke={`url(#${id}-gold)`} strokeWidth="1.3" strokeLinecap="round">
+          <path d={FLOURISH} />
+          <path d={FLOURISH} transform="translate(100 0) scale(-1 1)" />
+          <path d={FLOURISH} transform="translate(0 140) scale(1 -1)" />
+          <path d={FLOURISH} transform="translate(100 140) scale(-1 -1)" />
+        </g>
+        <g fill={`url(#${id}-gold)`}>
+          <path d="M50 12 L54 17 L50 22 L46 17 Z" />
+          <path d="M50 118 L54 123 L50 128 L46 123 Z" />
+          <path d="M40 17 Q45 13 50 17 Q45 15.5 40 17 Z M60 17 Q55 13 50 17 Q55 15.5 60 17 Z" />
+          <path d="M40 123 Q45 127 50 123 Q45 124.5 40 123 Z M60 123 Q55 127 50 123 Q55 124.5 60 123 Z" />
+        </g>
+        <circle cx="50" cy="70" r="21" fill="#0b0b0c" stroke={`url(#${id}-gold)`} strokeWidth="1.6" />
+        <circle cx="50" cy="70" r="17.5" fill="none" stroke={`url(#${id}-gold)`} strokeWidth="0.6" strokeDasharray="1.2 1.6" />
+      </svg>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/300-logo.jpg" alt="" className="size-6 rounded-full opacity-80" />
+      <img src="/300-logo.jpg" alt="" className="absolute left-1/2 top-1/2 aspect-square w-[32%] -translate-x-1/2 -translate-y-1/2 rounded-full" />
     </span>
   );
 }
