@@ -18,7 +18,8 @@ export type Sound =
   | "cluck" // the cock sets off
   | "crash" // a car hits
   | "spin" // the coin is thrown
-  | "land"; // the coin lands
+  | "land" // the coin lands
+  | "knock"; // the dealer knocks twice: the dealer's turn
 
 const MUTE_KEY = "300spo:muted";
 const VOLUME = 0.32;
@@ -163,6 +164,13 @@ const RECIPES: Record<Sound, (ctx: AudioContext) => void> = {
   spin: (ctx) => {
     for (let index = 0; index < 9; index += 1) tone(ctx, { type: "sine", from: 2400 + index * 60, at: index * 0.16, length: 0.08, volume: 0.12 });
     noise(ctx, { from: 1200, to: 3000, length: 1.3, volume: 0.12, q: 2 });
+  },
+  knock: (ctx) => {
+    // Two knuckles on wood: a short low thump with a dry click on top, twice.
+    for (const at of [0, 0.17]) {
+      tone(ctx, { type: "sine", from: 190, to: 95, at, length: 0.12, volume: 0.9 });
+      noise(ctx, { from: 1400, to: 700, at, length: 0.05, volume: 0.55, q: 2.2 });
+    }
   },
   land: (ctx) => {
     tone(ctx, { type: "sine", from: 2637, length: 0.4, volume: 0.3 });
