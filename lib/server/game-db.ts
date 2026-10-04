@@ -1,4 +1,5 @@
 import type { BlackjackState } from "../game/blackjack";
+import type { PokerState } from "../game/poker";
 import { asJson, database as db, result as one } from "./db";
 
 /** Errors raised by the game.* and drip.* functions (`raise exception '<code>'`). */
@@ -25,6 +26,9 @@ export const GAME_ERRORS = new Set([
   "not_seated",
   "round_running",
   "not_your_turn",
+  "room_locked",
+  "already_seated",
+  "hand_running",
 ]);
 
 export const gameErrorCode = (error: unknown) =>
@@ -181,6 +185,20 @@ export const gameDb = {
     one<BlackjackState>(db()`select game.bj_bet(${table}::integer, ${wallet}, ${bet === null ? null : bet.toString()}::bigint, ${seat}::integer) as result`),
   bjAct: (table: number, wallet: string, action: string) => one<BlackjackState>(db()`select game.bj_act(${table}::integer, ${wallet}, ${action}) as result`),
   bjTickAll: () => db()`select game.bj_tick_all()`,
+  // Poker: only wallets that entered the room code come in (game.pk_require); every call applies the table's
+  // due deadlines first (see game.pk_step).
+  pkUnlock: (wallet: string, code: string) =>
+    one<{ ok: boolean; error?: "wrong_code" | "too_many_attempts" | "room_closed" }>(db()`select game.pk_unlock(${wallet}, ${code}) as result`),
+  pkEnter: (table: number, wallet: string) => one<PokerState>(db()`select game.pk_enter(${table}::integer, ${wallet}) as result`),
+  pkSit: (table: number, seat: number, wallet: string, name: string, buyIn: bigint) =>
+    one<PokerState>(db()`select game.pk_sit(${table}::integer, ${seat}::integer, ${wallet}, ${name}, ${buyIn.toString()}::bigint) as result`),
+  pkAddChips: (table: number, wallet: string, amount: bigint) =>
+    one<PokerState>(db()`select game.pk_add_chips(${table}::integer, ${wallet}, ${amount.toString()}::bigint) as result`),
+  pkSitOut: (table: number, wallet: string, out: boolean) => one<PokerState>(db()`select game.pk_sit_out(${table}::integer, ${wallet}, ${out}::boolean) as result`),
+  pkLeave: (table: number, wallet: string) => one<PokerState>(db()`select game.pk_leave(${table}::integer, ${wallet}) as result`),
+  pkAct: (table: number, wallet: string, action: string, amount: bigint | null) =>
+    one<PokerState>(db()`select game.pk_act(${table}::integer, ${wallet}, ${action}, ${amount === null ? null : amount.toString()}::bigint) as result`),
+  pkTickAll: () => db()`select game.pk_tick_all()`,
   claimWelcome: (wallet: string, lovelace: bigint, pool: boolean) =>
     one<WelcomeClaim>(db()`select game.claim_welcome(${wallet}, ${lovelace.toString()}::bigint, ${pool}::boolean) as result`),
   logWelcomeAttempt: (wallet: string, status: string, pool: boolean, drep: boolean, lovelace: bigint | null) =>

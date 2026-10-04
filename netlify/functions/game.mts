@@ -33,6 +33,12 @@ const handle = async (request: Request, action: string, wallet: string) => {
     if (!Number.isInteger(table) || table < 1 || table > 99) return json({ error: "invalid_request" }, 400);
     return json(await gameDb.bjEnter(table, wallet));
   }
+  // Poker: behind the room code; looking at the table keeps the seat, like blackjack.
+  if (action === "poker" && request.method === "GET") {
+    const table = Number(new URL(request.url).searchParams.get("table") ?? 1);
+    if (!Number.isInteger(table) || table < 1 || table > 99) return json({ error: "invalid_request" }, 400);
+    return json(await gameDb.pkEnter(table, wallet));
+  }
   if (action === "race" && request.method === "GET") {
     // With ?count the deals come as a list (the race table); without it, the single preview of older clients.
     const param = new URL(request.url).searchParams.get("count");
@@ -141,6 +147,41 @@ const handle = async (request: Request, action: string, wallet: string) => {
       const move = String(body.move ?? "");
       if (!["hit", "stand", "double", "split"].includes(move)) return json({ error: "invalid_request" }, 400);
       return json(await gameDb.bjAct(table, wallet, move));
+    }
+    return json({ error: "not_found" }, 404);
+  }
+
+  if (action === "poker-unlock") {
+    const code = String(body.code ?? "").trim();
+    if (!/^[0-9A-Za-z]{1,32}$/.test(code)) return json({ error: "wrong_code" }, 403);
+    const result = await gameDb.pkUnlock(wallet, code);
+    if (result.ok) return json({ ok: true });
+    return json({ error: result.error ?? "wrong_code" }, result.error === "too_many_attempts" ? 429 : 403);
+  }
+
+  if (action.startsWith("poker-")) {
+    const table = Number(body.table);
+    if (!Number.isInteger(table) || table < 1 || table > 99) return json({ error: "invalid_request" }, 400);
+    const amount = (value: unknown) => (/^\d{1,12}$/.test(String(value)) ? BigInt(String(value)) : null);
+    if (action === "poker-sit") {
+      const seat = Number(body.seat);
+      const buyIn = amount(body.buyIn);
+      if (!Number.isInteger(seat) || seat < 1 || seat > 6 || buyIn === null) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.pkSit(table, seat, wallet, await tableName(wallet), buyIn));
+    }
+    if (action === "poker-chips") {
+      const chips = amount(body.amount);
+      if (chips === null) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.pkAddChips(table, wallet, chips));
+    }
+    if (action === "poker-sit-out") return json(await gameDb.pkSitOut(table, wallet, body.out === true));
+    if (action === "poker-leave") return json(await gameDb.pkLeave(table, wallet));
+    if (action === "poker-act") {
+      const move = String(body.move ?? "");
+      if (!["fold", "check", "call", "raise", "allin"].includes(move)) return json({ error: "invalid_request" }, 400);
+      const to = move === "raise" ? amount(body.amount) : null;
+      if (move === "raise" && to === null) return json({ error: "invalid_request" }, 400);
+      return json(await gameDb.pkAct(table, wallet, move, to));
     }
     return json({ error: "not_found" }, 404);
   }

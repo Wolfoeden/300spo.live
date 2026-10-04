@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { choiceLabel } from "@/lib/game/catalog";
 import { raceDeck, runRace } from "@/lib/game/card-race";
 import { crashLane, difficultyLabel } from "@/lib/game/chicken";
+import { categoryName, rankName } from "@/lib/game/poker";
 import { sha256Hex, verifyOutcome } from "@/lib/game/fair";
 import { Check, Spinner } from "../icons";
 import { InfoBubble } from "../info-bubble";
@@ -189,8 +190,20 @@ export function FairnessCard({
 }
 
 /** "Xerxes → 300" style label for a round's pick and result. */
-export const roundSummary = (round: { game: string; choice: number; outcome: number; payout: number; detail?: { hazards?: number; result?: string } | null }) =>
-  round.game === "blackjack"
+export const roundSummary = (round: {
+  game: string;
+  choice: number;
+  outcome: number;
+  payout: number;
+  detail?: { hazards?: number; result?: string; rank?: number | null } | null;
+}) =>
+  round.game === "poker"
+    ? round.detail?.result === "fold"
+      ? "Folded"
+      : round.detail?.rank
+        ? `${rankName(round.detail.rank)}${round.detail.result === "split" ? " · split pot" : round.detail.result === "lose" ? ` · lost to ${categoryName(round.outcome).toLowerCase()}` : ""}`
+        : "Won · everyone folded"
+    : round.game === "blackjack"
     ? `${round.choice > 21 ? "Bust" : round.choice} vs dealer ${round.outcome > 21 ? "bust" : round.outcome}${round.detail?.result === "blackjack" ? " · blackjack" : ""}`
     : round.game === "chicken"
     ? `${difficultyLabel(round.detail?.hazards ?? 1)} · ${round.payout > 0 ? `collected after ${round.choice} lane${round.choice === 1 ? "" : "s"}` : `hit on lane ${round.choice}`}`
