@@ -17,6 +17,8 @@ import { Arena, type ArenaGame, type PlayResult, type RaceTicket } from "./arena
 import { FairnessCard, roundSummary, type Fairness } from "./fairness-card";
 import type { BlackjackState } from "@/lib/game/blackjack";
 import { BlackjackTable } from "./blackjack-table";
+import type { PokerState } from "@/lib/game/poker";
+import { PokerTable } from "./poker-table";
 import { ChickenGame, type ChickenRound, type ChickenState } from "./chicken-game";
 import { Lobby } from "./lobby";
 import { RaceTable, type RaceDeals, type StakedRaces } from "./race-table";
@@ -77,6 +79,12 @@ const API_ERRORS: Record<string, string> = {
   not_seated: "Take a seat first.",
   round_running: "The cards are already out. Bet for the next round when this one ends.",
   not_your_turn: "It is not your turn.",
+  room_locked: "Enter the room code first.",
+  wrong_code: "That code is not right.",
+  too_many_attempts: "Too many tries. Wait a few minutes, then try again.",
+  room_closed: "The poker room is closed right now.",
+  already_seated: "You already sit at the table.",
+  hand_running: "You are in the running hand. Wait until it ends.",
   too_many_open_deposits: "Too many unfinished deposits. Let the pending ones confirm first.",
   not_configured: "The game is not configured yet.",
   not_signed_in: "Your wallet session expired. Verify your wallet again.",
@@ -92,6 +100,14 @@ const sitBlackjack = (table: number, seat: number) => api<BlackjackState>("/api/
 const leaveBlackjack = (table: number, seat: number | null) => api<BlackjackState>("/api/game/blackjack-leave", { table, seat });
 const betBlackjack = (table: number, amount: number | null) => api<BlackjackState>("/api/game/blackjack-bet", { table, bet: amount === null ? null : String(amount) });
 const actBlackjack = (table: number, move: "hit" | "stand" | "double" | "split") => api<BlackjackState>("/api/game/blackjack-act", { table, move });
+const loadPoker = (table: number) => api<PokerState>(`/api/game/poker?table=${table}`);
+const unlockPoker = (code: string) => api<{ ok: true }>("/api/game/poker-unlock", { code }).then(() => undefined);
+const sitPoker = (table: number, seat: number, buyIn: number) => api<PokerState>("/api/game/poker-sit", { table, seat, buyIn: String(buyIn) });
+const addPokerChips = (table: number, amount: number) => api<PokerState>("/api/game/poker-chips", { table, amount: String(amount) });
+const sitOutPoker = (table: number, out: boolean) => api<PokerState>("/api/game/poker-sit-out", { table, out });
+const leavePoker = (table: number) => api<PokerState>("/api/game/poker-leave", { table });
+const actPoker = (table: number, move: "fold" | "check" | "call" | "raise" | "allin", amount?: number) =>
+  api<PokerState>("/api/game/poker-act", { table, move, amount: amount === undefined ? undefined : String(amount) });
 const loadChicken = () => api<ChickenState>("/api/game/chicken");
 const startChicken = (bet: number, hazards: number) => api<ChickenRound>("/api/game/chicken-start", { bet: String(bet), hazards });
 const stepChicken = (round: number) => api<ChickenRound>("/api/game/chicken-step", { round });
@@ -99,7 +115,14 @@ const collectChicken = (round: number) => api<ChickenRound>("/api/game/chicken-c
 type WelcomeResult = { status: "granted"; amount: number; total: number; balance: number } | { status: "claimed" | "not_eligible" | "disabled" | "not_delegated" };
 const claimWelcome = () => api<WelcomeResult>("/api/game/welcome", {});
 
-class ApiError extends Error {}
+/** `code`: the server's error code (the poker table asks for the room code on "room_locked"). */
+class ApiError extends Error {
+  code: string | null;
+  constructor(message: string, code: string | null = null) {
+    super(message);
+    this.code = code;
+  }
+}
 
 const api = async <T,>(path: string, body?: unknown): Promise<T> => {
   const response = await fetch(path, {
@@ -110,7 +133,7 @@ const api = async <T,>(path: string, body?: unknown): Promise<T> => {
     cache: "no-store",
   });
   const data = (await response.json().catch(() => ({}))) as { error?: string };
-  if (!response.ok) throw new ApiError(API_ERRORS[data.error ?? ""] ?? `Request failed (HTTP ${response.status}).`);
+  if (!response.ok) throw new ApiError(API_ERRORS[data.error ?? ""] ?? `Request failed (HTTP ${response.status}).`, data.error ?? null);
   return data as T;
 };
 
@@ -360,6 +383,24 @@ export function GamePage() {
               leave={leaveBlackjack}
               bet={betBlackjack}
               act={actBlackjack}
+            />
+          ) : tile.game === "poker" ? (
+            <PokerTable
+              key={`poker-${variant ?? 1}`}
+              game={game}
+              table={Number(variant) || 1}
+              balance={common.balance}
+              enabled={common.enabled}
+              onSettled={common.onSettled}
+              onBack={common.onBack}
+              wallet={common.wallet}
+              load={loadPoker}
+              unlock={unlockPoker}
+              sit={sitPoker}
+              addChips={addPokerChips}
+              sitOut={sitOutPoker}
+              leave={leavePoker}
+              act={actPoker}
             />
           ) : tile.game === "chicken" ? (
             <ChickenGame

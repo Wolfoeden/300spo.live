@@ -118,8 +118,8 @@ export type PanelPlay = {
   lockable?: boolean;
   tone?: "gold" | "green";
   kbd?: React.ReactNode;
-  /** The amount in the button when it is not the bet (the horse race shows its chips' total). */
-  amount?: number;
+  /** The amount in the button when it is not the bet (the horse race shows its chips' total); null shows none. */
+  amount?: number | null;
 };
 
 /**
@@ -143,7 +143,8 @@ export function GamePanel({
   prompt: React.ReactNode;
   /** Game choices above the prompt (coin side, difficulty). */
   options?: React.ReactNode;
-  bet: { bets: Bets; bet: number; onChange(bet: number): void; disabled: boolean; affordable(amount: number): boolean };
+  /** `label`: what the amount is (a bet by default); `hidden`: no amount to set right now (the poker table between turns). */
+  bet: { bets: Bets; bet: number; onChange(bet: number): void; disabled: boolean; affordable(amount: number): boolean; label?: string; hidden?: boolean };
   play: PanelPlay;
   /** Replaces − and + (Chicken's collect button while a round runs). */
   side?: React.ReactNode;
@@ -207,9 +208,9 @@ export function GamePanel({
     >
       <div className="mx-auto flex max-w-md flex-col gap-1.5 lg:h-full lg:max-w-none lg:gap-4">
         {options}
-        {!below && (
+        {!below && !bet.hidden && (
           <div className="hidden lg:block">
-            <BetStepper bets={bet.bets} bet={bet.bet} onChange={bet.onChange} disabled={bet.disabled} affordable={bet.affordable} />
+            <BetStepper bets={bet.bets} bet={bet.bet} onChange={bet.onChange} disabled={bet.disabled} affordable={bet.affordable} label={bet.label} />
           </div>
         )}
         {/* With its own bet row (the horse race) the play button says enough on phones. */}
@@ -218,20 +219,28 @@ export function GamePanel({
         </p>
         <div
           className={`grid gap-2 ${
-            side ? "grid-cols-2" : below ? (lead ? "grid-cols-[auto_minmax(0,1fr)]" : "grid-cols-1") : "grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] lg:grid-cols-1"
+            side
+              ? "grid-cols-2"
+              : below || bet.hidden
+                ? lead
+                  ? "grid-cols-[auto_minmax(0,1fr)]"
+                  : "grid-cols-1"
+                : "grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] lg:grid-cols-1"
           }`}
         >
-          {side ? side : below ? lead : stepButton(-1)}
+          {side ? side : below || bet.hidden ? lead : stepButton(-1)}
           <HoldPlayButton onPlay={play.onPlay} auto={play.auto} onAuto={play.onAuto} playable={play.playable} lockable={lockable} tone={play.tone}>
             <span className="flex min-w-0 items-baseline gap-2 leading-tight lg:flex-col lg:items-center lg:gap-0">
               <span className="truncate text-[0.62rem] font-semibold uppercase tracking-[0.1em] opacity-75 lg:text-[0.68rem]">{play.label}</span>
-              <span className="text-base font-bold tabular-nums lg:text-xl">
-                {formatTokenAmount(BigInt(play.amount ?? bet.bet))} <span className="text-[0.65rem] font-semibold opacity-70">300</span>
-              </span>
+              {play.amount !== null && (
+                <span className="text-base font-bold tabular-nums lg:text-xl">
+                  {formatTokenAmount(BigInt(play.amount ?? bet.bet))} <span className="text-[0.65rem] font-semibold opacity-70">300</span>
+                </span>
+              )}
             </span>
             {play.kbd}
           </HoldPlayButton>
-          {!side && !below && stepButton(1)}
+          {!side && !below && !bet.hidden && stepButton(1)}
         </div>
         {below}
         {lockable && (

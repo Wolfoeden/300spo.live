@@ -17,7 +17,7 @@ export function Lobby({ onOpen }: { onOpen(slug: string): void }) {
         </h2>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
           <Tile tile={feature} onOpen={onOpen} large tag="New · 4× mode" />
-          <div className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             {others.map((tile) => (
               <Tile key={tile.slug} tile={tile} onOpen={onOpen} />
             ))}
@@ -45,7 +45,7 @@ function Tile({ tile, onOpen, large, small, tag }: { tile: LobbyTile; onOpen?(sl
     <>
       <div
         className={`relative overflow-hidden bg-[radial-gradient(circle_at_50%_35%,#2a2211,#0b0b0c_70%)] ${
-          large ? "aspect-[16/10] sm:aspect-[16/9] lg:aspect-auto lg:min-h-0 lg:flex-1" : small ? "aspect-[4/3]" : "aspect-[16/9] lg:aspect-[16/7]"
+          large ? "aspect-[16/10] sm:aspect-[16/9] lg:aspect-auto lg:min-h-0 lg:flex-1" : small ? "aspect-[4/3]" : "aspect-[16/9] lg:aspect-[16/10]"
         }`}
       >
         <div aria-hidden="true" className="grid-backdrop absolute inset-0 opacity-40" />
@@ -68,11 +68,11 @@ function Tile({ tile, onOpen, large, small, tag }: { tile: LobbyTile; onOpen?(sl
       </div>
       <div className={`flex items-end justify-between gap-3 ${small ? "p-3" : "p-4 sm:p-5"}`}>
         <div className="min-w-0">
-          <h3 className={`font-semibold tracking-tight ${large ? "text-2xl" : small ? "text-sm" : "text-lg"}`}>{tile.title}</h3>
-          <p className={`mt-1 text-muted ${small ? "line-clamp-2 text-xs" : "text-sm"}`}>{tile.tagline}</p>
+          <h3 className={`font-semibold tracking-tight ${large ? "text-2xl" : small ? "text-sm" : "text-lg lg:text-base"}`}>{tile.title}</h3>
+          <p className={`mt-1 text-muted ${small ? "line-clamp-2 text-xs" : large ? "text-sm" : "text-sm lg:line-clamp-2 lg:text-xs"}`}>{tile.tagline}</p>
         </div>
         {live && (
-          <span className="btn btn-gold shrink-0 !px-4 !py-2 text-sm">
+          <span className={`btn btn-gold shrink-0 !px-4 !py-2 text-sm ${large ? "" : "lg:!px-3 lg:!py-1.5 lg:text-xs"}`}>
             Play
             <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden="true">
               <path d="M7 4.5v15l13-7.5z" />
@@ -109,6 +109,8 @@ function Art({ slug }: { slug: string }) {
       return <ChickenArt />;
     case "blackjack":
       return <BlackjackArt />;
+    case "poker":
+      return <PokerArt />;
     case "dice":
       return <DiceArt />;
     case "sparta-board":
@@ -167,6 +169,33 @@ function BlackjackArt() {
         ))}
         <span className="absolute -right-[6%] top-[-8%] grid size-[30%] min-w-10 place-items-center rounded-full bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] text-lg font-black text-[#1a1204] shadow-xl ring-2 ring-black/30 sm:text-2xl">
           21
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Pocket aces behind a gold lock: the private poker room. */
+function PokerArt() {
+  const cards = [aceArt(0), aceArt(1)];
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_50%_20%,rgba(18,55,38,0.9),transparent_70%)]">
+      <div className="relative h-[60%] w-[60%]">
+        {cards.map((art, index) => (
+          <span
+            key={art.src}
+            className="absolute bottom-0 left-1/2 aspect-[5/7] h-full overflow-hidden rounded-xl border-2 border-gold-bright shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)] transition duration-500 group-hover:translate-y-[-4%]"
+            style={{ transform: `translateX(calc(-50% + ${(index - 0.5) * 42}%)) rotate(${(index - 0.5) * 14}deg)`, transformOrigin: "50% 120%", outline: `2px solid ${SUIT_COLORS[index]}`, outlineOffset: "2px" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={art.src} alt={art.alt} className="size-full object-cover object-top" />
+          </span>
+        ))}
+        <span className="absolute -right-[6%] top-[-8%] grid size-[30%] min-w-10 place-items-center rounded-full bg-[radial-gradient(circle_at_40%_35%,#ffe7a8,#e9b44c_55%,#a8691c)] text-[#1a1204] shadow-xl ring-2 ring-black/30">
+          <svg viewBox="0 0 24 24" className="size-[48%]" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="4" y="10" width="16" height="11" rx="2" />
+            <path d="M8 10V7a4 4 0 018 0v3" />
+          </svg>
         </span>
       </div>
     </div>
