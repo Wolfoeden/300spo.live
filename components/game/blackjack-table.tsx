@@ -65,6 +65,14 @@ const RESULT_STYLE: Record<NonNullable<BlackjackHand["result"]>, string> = {
   lose: "bg-black/80 text-faint",
 };
 
+/**
+ * Card widths. A card overlaps the one before by OVERLAP of its width, so the
+ * corner index (rank and suit, about 0.5 of the width at most) always stays
+ * free; the index scales with the card.
+ */
+const CARD_WIDTH = { seat: "clamp(1.75rem,5.6cqw,3.1rem)", front: "clamp(3rem,11.5cqw,5.4rem)", dealer: "clamp(2.4rem,9cqw,4.8rem)" } as const;
+const OVERLAP = "-ml-[calc(var(--card)*0.42)]";
+
 /** Seconds a countdown runs: to the deal, and per decision (see game.bj_step and game.bj_advance). */
 const DEAL_SECONDS = 10;
 const TURN_SECONDS = 20;
@@ -131,8 +139,18 @@ export function BlackjackTable({ game, bets, enabled, load, sit, leave, bet, act
   // The server's answer and the server's clock (countdowns run on it). A round seen in play that comes
   // back finished starts the dealer's turn: a double knock, then the cards one by one.
   const receive = useCallback((next: BlackjackView, you?: BlackjackState["you"]) => {
-    setOffset(Date.parse(next.now) - Date.now());
     const previous = viewRef.current;
+    // An answer that was read before the last push would turn the table back (a countdown would vanish):
+    // the table stays as it is, only the player's own part (balance, seats) is taken.
+    if (previous && previous.table === next.table && Date.parse(next.now) < Date.parse(previous.now)) {
+      if (you) {
+        const merged = { ...previous, you };
+        viewRef.current = merged;
+        setView(merged);
+      }
+      return;
+    }
+    setOffset(Date.parse(next.now) - Date.now());
     const before = previous?.round;
     const finished = next.round?.status === "done" ? next.round : next.last;
     if (before && before.status !== "done" && finished?.id === before.id && finished.hands.length && !reduceRef.current) {
@@ -680,12 +698,14 @@ function Dealer({
         {cards.length > 0 && <TotalPill total={total} />}
         {slow && <span className="animate-pulse rounded-full bg-gold/25 px-1.5 tracking-normal">Blackjack?</span>}
       </p>
-      <div className={`mt-1 flex h-[clamp(3.2rem,12cqw,6.6rem)] items-center transition-opacity ${faded ? "opacity-45" : ""}`}>
+      <div
+        className={`mt-1 flex h-[clamp(3.2rem,12cqw,6.6rem)] items-center transition-opacity ${faded ? "opacity-45" : ""}`}
+        style={{ "--card": CARD_WIDTH.dealer } as React.CSSProperties}
+      >
         {cards.map((card, index) => (
-          <span key={`${roundId}-${index}-${card === null ? "down" : "up"}`} className={index > 0 ? "-ml-[clamp(0.9rem,3.2cqw,1.8rem)]" : ""}>
+          <span key={`${roundId}-${index}-${card === null ? "down" : "up"}`} className={index > 0 ? OVERLAP : ""}>
             <PlayingCard
               card={card}
-              size="dealer"
               // The hole card turns over in place; every other card comes from the shoe.
               entry={index === 1 && card !== null ? { flip: true } : { x: 160, y: -10, delay: index < 2 && !playing ? (index * (dealtCount + 1) + dealtCount) * 0.18 : 0 }}
               reduce={reduce}
@@ -846,10 +866,22 @@ function Place({
       style={{ left: `${x}%`, top: `${y}%` }}
     >
       {/* The cloth in front of the player: cards, or the chip of a bet for the next deal. */}
-      <div className={`flex items-end justify-center gap-1 transition-opacity ${faded ? "opacity-45" : ""} ${front ? "min-h-[clamp(3.8rem,13cqw,7rem)]" : "min-h-[clamp(2.6rem,9cqw,4.6rem)]"}`}>
+      <div className={`flex items-end justify-center gap-2.5 transition-opacity ${faded ? "opacity-45" : ""} ${front ? "min-h-[clamp(3.8rem,13cqw,7rem)]" : "min-h-[clamp(2.6rem,9cqw,4.6rem)]"}`}>
         {/* A bet for the next deal shows over the faded cards of the last round. */}
         {hands.length && !(faded && pendingBet !== null) ? (
-          hands.map((hand) => <Hand key={hand.id} hand={hand} front={front} active={hand.id === activeHand} fly={fly} dealIndex={dealIndex} dealtCount={dealtCount} reduce={reduce} />)
+          hands.map((hand) => (
+            <Hand
+              key={hand.id}
+              hand={hand}
+              front={front}
+              active={hand.id === activeHand}
+              waiting={activeHand !== null && hand.id !== activeHand}
+              fly={fly}
+              dealIndex={dealIndex}
+              dealtCount={dealtCount}
+              reduce={reduce}
+            />
+          ))
         ) : pendingBet !== null ? (
           <motion.span initial={reduce ? false : { y: 24, opacity: 0, scale: 0.6 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 20 }}>
             <Chip amount={pendingBet} big={front} />
@@ -920,10 +952,14 @@ function Place({
   );
 }
 
+/** While it is a hand's turn its cards glow and pulse; the other hand of a split waits dimmed. */
+const GLOW = ["0 0 0 2px rgba(233,180,76,0.9), 0 0 12px 2px rgba(233,180,76,0.45)", "0 0 0 3px rgba(255,215,121,1), 0 0 30px 8px rgba(233,180,76,0.85)"];
+
 function Hand({
   hand,
   front,
   active,
+  waiting,
   fly,
   dealIndex,
   dealtCount,
@@ -932,27 +968,37 @@ function Hand({
   hand: BlackjackHand;
   front: boolean;
   active: boolean;
+  /** The other hand of a split is playing. */
+  waiting: boolean;
   fly: { x: number; y: number };
   dealIndex: number;
   dealtCount: number;
   reduce: boolean;
 }) {
   return (
-    <div className="relative flex flex-col items-center">
-      <TotalPill total={hand.total} bust={hand.status === "bust"} blackjack={hand.status === "blackjack"} />
-      <div className={`mt-0.5 flex rounded-md transition ${active ? "ring-2 ring-gold ring-offset-2 ring-offset-[#124a31]" : ""}`}>
+    <motion.div
+      className={`relative flex flex-col items-center transition-opacity duration-300 ${active ? "z-10" : ""} ${waiting ? "opacity-50 saturate-50" : ""}`}
+      animate={{ scale: active ? 1.06 : 1 }}
+      transition={{ type: "spring", stiffness: 300, damping: 22 }}
+    >
+      <TotalPill total={hand.total} bust={hand.status === "bust"} blackjack={hand.status === "blackjack"} active={active} />
+      <motion.div
+        className="mt-0.5 flex rounded-md"
+        style={{ "--card": front ? CARD_WIDTH.front : CARD_WIDTH.seat } as React.CSSProperties}
+        animate={active ? { boxShadow: reduce ? GLOW[1] : [GLOW[0], GLOW[1], GLOW[0]] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
+        transition={active && !reduce ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
+      >
         {hand.cards.map((card, index) => (
-          <span key={`${index}-${card}`} className={index > 0 ? (front ? "-ml-[clamp(1.4rem,5cqw,2.6rem)]" : "-ml-[clamp(0.8rem,3cqw,1.5rem)]") : ""}>
+          <span key={`${index}-${card}`} className={index > 0 ? OVERLAP : ""}>
             <PlayingCard
               card={card}
-              size={front ? "front" : "seat"}
               // The first two cards come in the order of the deal; later ones at once.
               entry={{ ...fly, delay: index < 2 && hand.part === 0 && dealIndex >= 0 ? (index * (dealtCount + 1) + dealIndex) * 0.18 : 0 }}
               reduce={reduce}
             />
           </span>
         ))}
-      </div>
+      </motion.div>
       <span className="mt-1">
         <Chip amount={hand.bet} doubled={hand.doubled} big={front} />
       </span>
@@ -967,7 +1013,7 @@ function Hand({
           {hand.payout > hand.bet ? ` +${formatTokenAmount(BigInt(hand.payout - hand.bet))}` : ""}
         </motion.span>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -985,11 +1031,11 @@ function Chip({ amount, doubled, big }: { amount: number; doubled?: boolean; big
   );
 }
 
-function TotalPill({ total, bust, blackjack }: { total: number; bust?: boolean; blackjack?: boolean }) {
+function TotalPill({ total, bust, blackjack, active }: { total: number; bust?: boolean; blackjack?: boolean; active?: boolean }) {
   return (
     <span
       className={`rounded-full px-1.5 font-mono text-[0.6rem] font-bold tabular-nums @[40rem]:text-[0.68rem] ${
-        bust ? "bg-danger/90 text-white" : blackjack ? "bg-gold text-ink" : "bg-black/75 text-text"
+        bust ? "bg-danger/90 text-white" : blackjack ? "bg-gold text-ink" : active ? "bg-gold-bright text-ink shadow-[0_0_12px_rgba(233,180,76,0.8)]" : "bg-black/75 text-text"
       }`}
     >
       {blackjack ? "BJ" : total}
@@ -1004,16 +1050,15 @@ function TotalPill({ total, bust, blackjack }: { total: number; bust?: boolean; 
  */
 function PlayingCard({
   card,
-  size,
   entry,
   reduce,
 }: {
   card: Card | null;
-  size: "seat" | "front" | "dealer";
   entry: { x: number; y: number; delay: number } | { flip: true };
   reduce: boolean;
 }) {
-  const width = size === "dealer" ? "w-[clamp(2.4rem,9cqw,4.8rem)]" : size === "front" ? "w-[clamp(3rem,11.5cqw,5.4rem)]" : "w-[clamp(1.5rem,5.6cqw,3.1rem)]";
+  // The width comes from --card, set by the row of cards (see CARD_WIDTH).
+  const width = "w-[var(--card)]";
   const initial = reduce ? false : "flip" in entry ? { rotateY: 90, opacity: 0.4 } : { x: entry.x, y: entry.y, rotate: -24, scale: 0.7, opacity: 0 };
   const transition = "flip" in entry ? { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const } : { type: "spring" as const, stiffness: 170, damping: 22, delay: entry.delay };
   if (card === null) {
@@ -1036,9 +1081,10 @@ function PlayingCard({
       <span className="relative block size-full overflow-hidden rounded-[9%/7%]" style={{ backgroundColor: SUIT_COLORS[suit] }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={art.src} alt={`${rank}${SUIT_SYMBOLS[suit]}`} className="absolute inset-0 size-full object-cover" style={{ objectPosition: "50% 30%" }} />
-        <span className="absolute left-0 top-0 flex flex-col items-center rounded-br-md bg-black/80 px-[8%] py-[4%] leading-none">
-          <span className={`font-black text-gold-bright ${size === "seat" ? "text-[clamp(0.5rem,1.8cqw,0.9rem)]" : "text-[clamp(0.6rem,2.3cqw,1.15rem)]"}`}>{rank}</span>
-          <span className={size === "seat" ? "text-[clamp(0.45rem,1.6cqw,0.8rem)]" : "text-[clamp(0.55rem,2cqw,1rem)]"} style={{ color: SUIT_COLORS[suit] }}>
+        {/* The corner index stays within the part of the card the next one leaves free. */}
+        <span className="absolute left-0 top-0 flex flex-col items-center rounded-br-md bg-black/80 px-[calc(var(--card)*0.03)] py-[calc(var(--card)*0.02)] leading-none">
+          <span className="text-[max(0.5rem,calc(var(--card)*0.27))] font-black tracking-tighter text-gold-bright">{rank}</span>
+          <span className="text-[max(0.45rem,calc(var(--card)*0.22))]" style={{ color: SUIT_COLORS[suit] }}>
             {SUIT_SYMBOLS[suit]}
           </span>
         </span>
